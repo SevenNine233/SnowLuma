@@ -34,6 +34,16 @@ export class OneBotManager {
     return [...this.instances.values()];
   }
 
+  reloadConfig(uin: string): boolean {
+    const instance = this.instances.get(uin);
+    if (!instance) return false;
+
+    const config = loadOneBotConfig(uin);
+    instance.reloadConfig(config);
+    log.info('configuration reloaded: UIN=%s', uin);
+    return true;
+  }
+
   dispose(): void {
     for (const instance of this.instances.values()) {
       instance.dispose();

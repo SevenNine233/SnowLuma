@@ -4,6 +4,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { LoginPage } from './components/pages/LoginPage';
 import { OverviewPage } from './components/pages/OverviewPage';
 import { ConfigPage } from './components/pages/ConfigPage';
+import { LogsPage } from './components/pages/LogsPage';
 import type { QQInfo, OneBotConfig, HookProcessInfo } from './types';
 
 const fetchApi = async (url: string, options: RequestInit = {}) => {
@@ -18,7 +19,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(
     import.meta.env.VITE_SKIP_AUTH === 'true' ? true : null
   );
-  const [activePage, setActivePage] = useState<'总览' | '配置'>('总览');
+  const [activePage, setActivePage] = useState<'总览' | '配置' | '日志'>('总览');
   const [qqList, setQqList] = useState<QQInfo[]>([]);
   const [processList, setProcessList] = useState<HookProcessInfo[]>([]);
   const [processLoadingPid, setProcessLoadingPid] = useState<number | null>(null);
@@ -218,6 +219,9 @@ function App() {
             onSave={saveConfig}
             onConfigChange={setConfig}
           />
+        )}
+        {activePage === '日志' && (
+          <LogsPage fetchApi={fetchApi} />
         )}
       </MainLayout>
     </ThemeProvider>

@@ -1,12 +1,11 @@
 import {
   createServer,
-  type IncomingHttpHeaders,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from 'http';
 import type { ApiHandler } from './api-handler';
-import type { OneBotConfig } from './types';
+import type { HttpServerEndpoint, OneBotConfig } from './types';
 import { createLogger } from '../utils/logger';
 
 export interface HttpTransportContext {
@@ -16,42 +15,65 @@ export interface HttpTransportContext {
 const log = createLogger('OneBot.HTTP');
 
 export class HttpTransport {
-  private readonly config: OneBotConfig;
   private readonly context: HttpTransportContext;
-  private readonly servers: Server[] = [];
+  private readonly servers = new Map<string, Server>();
+  private endpoints: HttpServerEndpoint[] = [];
 
   constructor(config: OneBotConfig, context: HttpTransportContext) {
-    this.config = config;
+    this.endpoints = [...config.httpServers];
     this.context = context;
   }
 
   start(): void {
-    for (const endpoint of this.config.httpServers) {
-      const expectedPath = normalizePath(endpoint.path ?? '/');
-      const endpointToken = endpoint.accessToken ?? '';
-      const server = createServer((req, res) => {
-        void this.handleRequest(expectedPath, endpointToken, req, res);
-      });
+    for (const endpoint of this.endpoints) this.startEndpoint(endpoint);
+  }
 
-      server.on('listening', () => {
-        const label = endpoint.name ? `[${endpoint.name}] ` : '';
-        log.success('%slistening %s:%d%s', label, endpoint.host, endpoint.port, expectedPath);
-      });
+  reloadConfig(config: OneBotConfig): void {
+    const nextEndpoints = [...config.httpServers];
+    const nextKeys = new Set(nextEndpoints.map(httpServerKey));
 
-      server.on('error', (error) => {
-        log.warn('server error: %s', error instanceof Error ? error.message : String(error));
-      });
-
-      server.listen(endpoint.port, endpoint.host);
-      this.servers.push(server);
+    for (const [key, server] of this.servers) {
+      if (!nextKeys.has(key)) {
+        server.close();
+        this.servers.delete(key);
+        log.info('stopped %s', key);
+      }
     }
+
+    for (const endpoint of nextEndpoints) {
+      if (!this.servers.has(httpServerKey(endpoint))) {
+        this.startEndpoint(endpoint);
+      }
+    }
+
+    this.endpoints = nextEndpoints;
   }
 
   stop(): void {
-    for (const server of this.servers) {
+    for (const server of this.servers.values()) {
       server.close();
     }
-    this.servers.length = 0;
+    this.servers.clear();
+  }
+
+  private startEndpoint(endpoint: HttpServerEndpoint): void {
+    const expectedPath = normalizePath(endpoint.path ?? '/');
+    const endpointToken = endpoint.accessToken ?? '';
+    const server = createServer((req, res) => {
+      void this.handleRequest(expectedPath, endpointToken, req, res);
+    });
+
+    server.on('listening', () => {
+      const label = endpoint.name ? `[${endpoint.name}] ` : '';
+      log.success('%slistening %s:%d%s', label, endpoint.host, endpoint.port, expectedPath);
+    });
+
+    server.on('error', (error) => {
+      log.warn('server error: %s', error instanceof Error ? error.message : String(error));
+    });
+
+    server.listen(endpoint.port, endpoint.host);
+    this.servers.set(httpServerKey(endpoint), server);
   }
 
   private async handleRequest(expectedPath: string, accessToken: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -152,6 +174,10 @@ function normalizePath(pathValue: string): string {
   const path = pathValue.trim() || '/';
   if (path === '/') return '/';
   return path.endsWith('/') ? path.slice(0, -1) : path;
+}
+
+function httpServerKey(endpoint: HttpServerEndpoint): string {
+  return `${endpoint.host}:${endpoint.port}${normalizePath(endpoint.path ?? '/')}#${endpoint.accessToken ?? ''}`;
 }
 
 function isAuthorized(request: IncomingMessage, token: string): boolean {

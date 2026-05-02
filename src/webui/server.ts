@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
-import { createLogger } from '../utils/logger';
+import { createLogger, getRecentLogs, subscribeLogs } from '../utils/logger';
 import { randomBytes } from 'crypto';
 import type { OneBotManager } from '../onebot/manager';
 import { loadOneBotConfig, saveOneBotConfig } from '../onebot/config';
@@ -73,12 +73,14 @@ export function initWebUI(port: number = 8080, oneBotManager: OneBotManager, hoo
     }
 
     const authHeader = c.req.header('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    const queryToken = c.req.query('token') ?? '';
+    const token = bearerToken || queryToken;
+    if (!token) {
       return c.json({ status: 'failed', message: 'Unauthorized' }, 401);
     }
 
     purgeExpiredTokens();
-    const token = authHeader.slice(7);
     const expiry = sessionTokens.get(token);
     if (!expiry || Date.now() > expiry) {
       return c.json({ status: 'failed', message: 'Token expired or invalid' }, 401);
@@ -160,6 +162,43 @@ export function initWebUI(port: number = 8080, oneBotManager: OneBotManager, hoo
     return c.json({ list });
   });
 
+  app.get('/api/logs', (c) => {
+    const limit = Number(c.req.query('limit') ?? 300);
+    return c.json({ list: getRecentLogs(limit) });
+  });
+
+  app.get('/api/logs/stream', (c) => {
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder();
+        const send = (event: unknown) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        };
+        send({ type: 'ready' });
+        const unsubscribe = subscribeLogs((entry) => send(entry));
+        const heartbeat = setInterval(() => {
+          controller.enqueue(encoder.encode(': heartbeat\n\n'));
+        }, 15000);
+        c.req.raw.signal.addEventListener('abort', () => {
+          clearInterval(heartbeat);
+          unsubscribe();
+          try {
+            controller.close();
+          } catch {
+          }
+        });
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+  });
+
   app.get('/api/processes', async (c) => {
     if (!hookManager) return c.json({ list: [] });
     try {
@@ -208,8 +247,13 @@ export function initWebUI(port: number = 8080, oneBotManager: OneBotManager, hoo
       const uin = c.req.param('uin');
       const body = await c.req.json() as OneBotConfig;
       saveOneBotConfig(uin, body);
-      log.info(`Updated OneBot config for UIN: ${uin}`);
-      return c.json({ success: true, message: '配置保存成功，将在下次会话重连时生效。' });
+      const reloaded = oneBotManager.reloadConfig(uin);
+      log.info('Updated OneBot config for UIN: %s%s', uin, reloaded ? ' and reloaded' : '');
+      return c.json({
+        success: true,
+        reloaded,
+        message: reloaded ? '配置保存成功，已热重载当前会话。' : '配置保存成功，当前会话未在线，将在下次连接时生效。',
+      });
     } catch (err) {
       return c.json({ success: false, message: String(err) }, 400);
     }

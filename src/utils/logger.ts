@@ -2,6 +2,15 @@ import { format } from 'util';
 
 type LogLevel = 'debug' | 'info' | 'success' | 'warn' | 'error';
 
+export interface LogEntry {
+  id: number;
+  time: string;
+  level: LogLevel;
+  scope: string;
+  message: string;
+  line: string;
+}
+
 interface LogOptions {
   scope: string;
 }
@@ -33,6 +42,10 @@ const COLOR_CODE: Record<LogLevel, number> = {
 const COLOR_SCOPE = 35;
 const COLOR_DIM = 2;
 const COLOR_RESET = '\x1b[0m';
+const MAX_LOG_ENTRIES = 1000;
+const logEntries: LogEntry[] = [];
+const logSubscribers = new Set<(entry: LogEntry) => void>();
+let nextLogId = 1;
 
 function resolveMinLevel(): LogLevel {
   const raw = (process.env.SNOWLUMA_LOG_LEVEL ?? 'info').toLowerCase();
@@ -82,9 +95,33 @@ function render(level: LogLevel, scope: string, args: unknown[]): string {
 
 function emit(level: LogLevel, options: LogOptions, args: unknown[]): void {
   if (!shouldLog(level)) return;
+  const message = format(...args);
   const line = render(level, options.scope, args);
+  const entry: LogEntry = {
+    id: nextLogId++,
+    time: new Date().toISOString(),
+    level,
+    scope: options.scope,
+    message,
+    line,
+  };
+  logEntries.push(entry);
+  if (logEntries.length > MAX_LOG_ENTRIES) logEntries.shift();
+  for (const subscriber of logSubscribers) subscriber(entry);
   const stream = level === 'warn' || level === 'error' ? process.stderr : process.stdout;
   stream.write(line + '\n');
+}
+
+export function getRecentLogs(limit = 300): LogEntry[] {
+  const n = Math.max(1, Math.min(Math.trunc(limit), MAX_LOG_ENTRIES));
+  return logEntries.slice(-n);
+}
+
+export function subscribeLogs(callback: (entry: LogEntry) => void): () => void {
+  logSubscribers.add(callback);
+  return () => {
+    logSubscribers.delete(callback);
+  };
 }
 
 export interface Logger {

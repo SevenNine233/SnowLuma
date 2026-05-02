@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, LayoutDashboard, Settings, Sparkles } from 'lucide-react';
+import { Activity, LayoutDashboard, Settings, Sparkles, Terminal } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { useTheme } from '../../contexts/ThemeContext';
 
-type Page = '总览' | '配置';
+type Page = '总览' | '配置' | '日志';
 
 interface MainLayoutProps {
   activePage: Page;
@@ -17,6 +17,7 @@ interface MainLayoutProps {
 const pageMeta: Record<Page, { title: string; subtitle: string; badge: string; icon: typeof LayoutDashboard }> = {
   '总览': { title: '总览', subtitle: '查看当前接入的 QQ 账号及服务运行状态', badge: '控制台视图', icon: LayoutDashboard },
   '配置': { title: '节点配置', subtitle: '管理 OneBot 协议端点与通信参数', badge: '协议编排', icon: Settings },
+  '日志': { title: '日志', subtitle: '查看后端运行日志与实时事件流', badge: 'SSE 实时流', icon: Terminal },
 };
 
 export function MainLayout({ activePage, onNavigate, status, onLogout, children }: MainLayoutProps) {

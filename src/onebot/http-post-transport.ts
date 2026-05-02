@@ -1,12 +1,5 @@
-import type { JsonObject, OneBotConfig } from './types';
+import type { JsonObject, OneBotConfig, HttpPostEndpoint } from './types';
 import { createLogger } from '../utils/logger';
-
-export interface HttpPostEndpoint {
-  name?: string;
-  url: string;
-  accessToken?: string;
-  timeoutMs?: number;
-}
 
 export interface HttpPostTransportContext {
   uin: string;
@@ -17,21 +10,26 @@ const log = createLogger('OneBot.POST');
 const DEFAULT_TIMEOUT_MS = 5000;
 
 export class HttpPostTransport {
-  private readonly config: OneBotConfig;
   private readonly context: HttpPostTransportContext;
+  private endpoints: HttpPostEndpoint[] = [];
   private stopped = false;
 
   constructor(config: OneBotConfig, context: HttpPostTransportContext) {
-    this.config = config;
+    this.endpoints = [...config.httpPostEndpoints];
     this.context = context;
   }
 
   start(): void {
     this.stopped = false;
-    const count = this.config.httpPostEndpoints?.length ?? 0;
+    const count = this.endpoints.length;
     if (count > 0) {
       log.info('configured %d HTTP POST endpoint(s)', count);
     }
+  }
+
+  reloadConfig(config: OneBotConfig): void {
+    this.endpoints = [...config.httpPostEndpoints];
+    log.info('reloaded %d HTTP POST endpoint(s)', this.endpoints.length);
   }
 
   stop(): void {
@@ -39,7 +37,7 @@ export class HttpPostTransport {
   }
 
   publishEvent(event: JsonObject): void {
-    const endpoints = this.config.httpPostEndpoints;
+    const endpoints = this.endpoints;
     if (!endpoints || endpoints.length === 0) return;
 
     const payload = JSON.stringify(event);

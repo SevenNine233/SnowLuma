@@ -1,7 +1,7 @@
 import WebSocket, { WebSocketServer } from 'ws';
 import type { IncomingHttpHeaders, IncomingMessage } from 'http';
 import type { ApiHandler } from './api-handler';
-import type { JsonObject, OneBotConfig, WsRole } from './types';
+import type { JsonObject, OneBotConfig, WsClientEndpoint, WsRole, WsServerEndpoint } from './types';
 import { createLogger } from '../utils/logger';
 
 interface ForwardConnection {
@@ -14,6 +14,7 @@ interface ReverseConnection {
   role: WsRole;
   endpointUrl: string;
   reconnectIntervalMs: number;
+  key: string;
 }
 
 export interface WsTransportContext {
@@ -26,17 +27,19 @@ export interface WsTransportContext {
 const log = createLogger('OneBot.WS');
 
 export class WsTransport {
-  private readonly config: OneBotConfig;
   private readonly context: WsTransportContext;
 
-  private readonly servers: WebSocketServer[] = [];
+  private readonly servers = new Map<string, WebSocketServer>();
   private readonly forwardConnections = new Map<WebSocket, ForwardConnection>();
   private readonly reverseConnections = new Set<ReverseConnection>();
   private readonly reconnectTimers = new Set<NodeJS.Timeout>();
+  private serverEndpoints: WsServerEndpoint[] = [];
+  private clientEndpoints: WsClientEndpoint[] = [];
   private stopped = false;
 
   constructor(config: OneBotConfig, context: WsTransportContext) {
-    this.config = config;
+    this.serverEndpoints = [...config.wsServers];
+    this.clientEndpoints = [...config.wsClients];
     this.context = context;
   }
 
@@ -44,6 +47,45 @@ export class WsTransport {
     this.stopped = false;
     this.startServers();
     this.startReverseClients();
+  }
+
+  reloadConfig(config: OneBotConfig): void {
+    const nextServers = [...config.wsServers];
+    const nextClients = [...config.wsClients];
+    const nextServerKeys = new Set(nextServers.map(wsServerKey));
+    const nextClientKeys = new Set(nextClients.map(wsClientKey));
+
+    for (const [key, server] of this.servers) {
+      if (!nextServerKeys.has(key)) {
+        server.close();
+        this.servers.delete(key);
+        log.info('stopped forward server %s', key);
+      }
+    }
+
+    for (const endpoint of nextServers) {
+      if (!this.servers.has(wsServerKey(endpoint))) {
+        this.startServerEndpoint(endpoint);
+      }
+    }
+
+    for (const conn of [...this.reverseConnections]) {
+      if (!nextClientKeys.has(conn.key)) {
+        safeClose(conn.socket);
+        this.reverseConnections.delete(conn);
+        log.info('stopped reverse client %s', conn.endpointUrl);
+      }
+    }
+
+    for (const endpoint of nextClients) {
+      const key = wsClientKey(endpoint);
+      if (![...this.reverseConnections].some(conn => conn.key === key)) {
+        this.startClientEndpoint(endpoint);
+      }
+    }
+
+    this.serverEndpoints = nextServers;
+    this.clientEndpoints = nextClients;
   }
 
   stop(): void {
@@ -65,10 +107,10 @@ export class WsTransport {
     }
     this.reverseConnections.clear();
 
-    for (const server of this.servers) {
+    for (const server of this.servers.values()) {
       server.close();
     }
-    this.servers.length = 0;
+    this.servers.clear();
   }
 
   publishEvent(event: JsonObject): void {
@@ -88,7 +130,12 @@ export class WsTransport {
   }
 
   private startServers(): void {
-    for (const endpoint of this.config.wsServers) {
+    for (const endpoint of this.serverEndpoints) {
+      this.startServerEndpoint(endpoint);
+    }
+  }
+
+  private startServerEndpoint(endpoint: WsServerEndpoint): void {
       const wss = new WebSocketServer({
         host: endpoint.host,
         port: endpoint.port,
@@ -129,16 +176,17 @@ export class WsTransport {
         log.warn('server error: %s', error instanceof Error ? error.message : String(error));
       });
 
-      this.servers.push(wss);
-    }
+      this.servers.set(wsServerKey(endpoint), wss);
   }
 
   private startReverseClients(): void {
-    for (const endpoint of this.config.wsClients) {
-      const role = endpoint.role ?? 'universal';
-      const reconnectIntervalMs = Math.max(1000, endpoint.reconnectIntervalMs ?? 5000);
-      this.connectReverseClient(endpoint.url, role, reconnectIntervalMs, endpoint.accessToken ?? '', endpoint.name);
-    }
+    for (const endpoint of this.clientEndpoints) this.startClientEndpoint(endpoint);
+  }
+
+  private startClientEndpoint(endpoint: WsClientEndpoint): void {
+    const role = endpoint.role ?? 'universal';
+    const reconnectIntervalMs = Math.max(1000, endpoint.reconnectIntervalMs ?? 5000);
+    this.connectReverseClient(endpoint.url, role, reconnectIntervalMs, endpoint.accessToken ?? '', endpoint.name);
   }
 
   private connectReverseClient(endpointUrl: string, role: WsRole, reconnectIntervalMs: number, accessToken: string, name?: string): void {
@@ -155,7 +203,7 @@ export class WsTransport {
     }
 
     const socket = new WebSocket(endpointUrl, { headers });
-    const conn: ReverseConnection = { socket, role, endpointUrl, reconnectIntervalMs };
+    const conn: ReverseConnection = { socket, role, endpointUrl, reconnectIntervalMs, key: wsClientPartsKey(endpointUrl, role, reconnectIntervalMs, accessToken) };
     this.reverseConnections.add(conn);
 
     socket.on('open', () => {
@@ -221,6 +269,26 @@ function parseRequestPath(urlValue: string): string {
   } catch {
     return '/';
   }
+}
+
+function normalizeWsPath(pathValue: string | undefined): string {
+  const path = (pathValue ?? '/').trim() || '/';
+  if (path === '/') return '/';
+  return path.endsWith('/') ? path.slice(0, -1) : path;
+}
+
+function wsServerKey(endpoint: WsServerEndpoint): string {
+  return `${endpoint.host}:${endpoint.port}${normalizeWsPath(endpoint.path)}#${endpoint.role ?? 'auto'}#${endpoint.accessToken ?? ''}`;
+}
+
+function wsClientPartsKey(endpointUrl: string, role: WsRole, reconnectIntervalMs: number, accessToken: string): string {
+  return `${endpointUrl}#${role}#${reconnectIntervalMs}#${accessToken}`;
+}
+
+function wsClientKey(endpoint: WsClientEndpoint): string {
+  const role = endpoint.role ?? 'universal';
+  const reconnectIntervalMs = Math.max(1000, endpoint.reconnectIntervalMs ?? 5000);
+  return wsClientPartsKey(endpoint.url, role, reconnectIntervalMs, endpoint.accessToken ?? '');
 }
 
 function isAuthorized(request: IncomingMessage, token: string): boolean {

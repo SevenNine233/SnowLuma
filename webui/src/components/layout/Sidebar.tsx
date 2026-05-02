@@ -1,10 +1,10 @@
-import { LayoutDashboard, Settings, LogOut, Sun, Moon, Monitor } from 'lucide-react';
+import { LayoutDashboard, Settings, LogOut, Sun, Moon, Monitor, Terminal } from 'lucide-react';
 import { Avatar } from '@heroui/react';
 import { StatusBadge } from '../ui/StatusBadge';
 import { motion } from 'framer-motion';
 import { useTheme, type ThemeMode } from '../../contexts/ThemeContext';
 
-type Page = '总览' | '配置';
+type Page = '总览' | '配置' | '日志';
 
 interface SidebarProps {
   activePage: Page;
@@ -16,6 +16,7 @@ interface SidebarProps {
 const navItems: { page: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { page: '总览', label: '总览', icon: LayoutDashboard },
   { page: '配置', label: '配置', icon: Settings },
+  { page: '日志', label: '日志', icon: Terminal },
 ];
 
 const THEME_OPTIONS: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [

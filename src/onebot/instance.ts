@@ -103,6 +103,12 @@ export class OneBotInstance {
     this.rkeyCache.warmUp(this.bridge, this.uin);
   }
 
+  reloadConfig(config: OneBotConfig): void {
+    this.httpTransport.reloadConfig(config);
+    this.httpPostTransport.reloadConfig(config);
+    this.wsTransport.reloadConfig(config);
+  }
+
   dispose(): void {
     this.online = false;
     this.stopHeartbeat();
@@ -135,6 +141,10 @@ export class OneBotInstance {
 
   hasPid(pid: number): boolean {
     return this.pids.has(pid);
+  }
+
+  getPids(): number[] {
+    return [...this.pids];
   }
 
   get empty(): boolean {
