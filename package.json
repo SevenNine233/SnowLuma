@@ -1,0 +1,42 @@
+{
+  "name": "snowluma",
+  "version": "0.1.0",
+  "description": "SnowLuma - NTQQ packet sniffer with Node.js native addon",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "scripts": {
+    "testtypes": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "vite build",
+    "build:webui": "pnpm --filter webui build",
+    "build:all": "cross-env BUILD_WEBUI=true vite build && pnpm --filter webui build",
+    "dev": "pnpm --parallel run dev",
+    "dev:core": "tsx src/index.ts",
+    "dev:web": "pnpm --filter webui dev",
+    "start": "node dist/index.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1.19.14",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@types/node": "^24.12.2",
+    "@types/ws": "^8.18.1",
+    "cross-env": "^10.1.0",
+    "hono": "^4.12.14",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vite": "catalog:",
+    "vite-plugin-cp": "^6.0.3",
+    "vitest": "^4.1.4"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "eslint-plugin-react-hooks>eslint": "10"
+      }
+    }
+  }
+}

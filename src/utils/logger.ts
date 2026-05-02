@@ -1,0 +1,107 @@
+import { format } from 'util';
+
+type LogLevel = 'debug' | 'info' | 'success' | 'warn' | 'error';
+
+interface LogOptions {
+  scope: string;
+}
+
+const LEVEL_WEIGHT: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  success: 25,
+  warn: 30,
+  error: 40,
+};
+
+const LEVEL_LABEL: Record<LogLevel, string> = {
+  debug: 'DEBUG',
+  info: 'INFO',
+  success: 'OK',
+  warn: 'WARN',
+  error: 'ERROR',
+};
+
+const COLOR_CODE: Record<LogLevel, number> = {
+  debug: 90,
+  info: 36,
+  success: 32,
+  warn: 33,
+  error: 31,
+};
+
+const COLOR_SCOPE = 35;
+const COLOR_DIM = 2;
+const COLOR_RESET = '\x1b[0m';
+
+function resolveMinLevel(): LogLevel {
+  const raw = (process.env.SNOWLUMA_LOG_LEVEL ?? 'info').toLowerCase();
+  if (raw === 'debug' || raw === 'info' || raw === 'success' || raw === 'warn' || raw === 'error') {
+    return raw;
+  }
+  return 'info';
+}
+
+const MIN_LEVEL = resolveMinLevel();
+
+function shouldLog(level: LogLevel): boolean {
+  return LEVEL_WEIGHT[level] >= LEVEL_WEIGHT[MIN_LEVEL];
+}
+
+function useColor(): boolean {
+  if (process.env.NO_COLOR === '1') return false;
+  return Boolean(process.stdout.isTTY);
+}
+
+function ansi(code: number, text: string): string {
+  return `\x1b[${code}m${text}${COLOR_RESET}`;
+}
+
+function currentTime(): string {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+function render(level: LogLevel, scope: string, args: unknown[]): string {
+  const message = format(...args);
+  const ts = currentTime();
+  const label = LEVEL_LABEL[level].padEnd(5, ' ');
+
+  if (!useColor()) {
+    return `${ts} ${label} [${scope}] ${message}`;
+  }
+
+  const cTs = ansi(COLOR_DIM, ts);
+  const cLabel = ansi(COLOR_CODE[level], label);
+  const cScope = ansi(COLOR_SCOPE, `[${scope}]`);
+  return `${cTs} ${cLabel} ${cScope} ${message}`;
+}
+
+function emit(level: LogLevel, options: LogOptions, args: unknown[]): void {
+  if (!shouldLog(level)) return;
+  const line = render(level, options.scope, args);
+  const stream = level === 'warn' || level === 'error' ? process.stderr : process.stdout;
+  stream.write(line + '\n');
+}
+
+export interface Logger {
+  debug: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  success: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
+}
+
+export function createLogger(scope: string): Logger {
+  const options: LogOptions = { scope };
+  return {
+    debug: (...args: unknown[]) => emit('debug', options, args),
+    info: (...args: unknown[]) => emit('info', options, args),
+    success: (...args: unknown[]) => emit('success', options, args),
+    warn: (...args: unknown[]) => emit('warn', options, args),
+    error: (...args: unknown[]) => emit('error', options, args),
+  };
+}

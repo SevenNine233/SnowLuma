@@ -1,0 +1,133 @@
+// BridgeManager — manages per-UIN Bridge sessions.
+// Wires NtqqHandler packets to appropriate Bridge instances.
+// Port of src/bridge/include/bridge/manager.h + src/bridge/src/manager.cpp
+
+import type { NtqqHandler } from '../protocol/ntqq-handler';
+import type { PacketInfo } from '../protocol/types';
+import type { QQEventVariant } from './events';
+import { Bridge } from './bridge';
+import { QQInfo } from './qq-info';
+import type { PacketSender } from '../protocol/packet-sender';
+import { createLogger } from '../utils/logger';
+
+export type SessionStartedCallback = (uin: string, qqInfo: QQInfo, bridge: Bridge) => void;
+export type SessionClosedCallback = (uin: string) => void;
+export type BridgeEventCallback = (uin: string, event: QQEventVariant) => void;
+
+interface QQSession {
+  qqInfo: QQInfo;
+  bridge: Bridge;
+}
+
+const log = createLogger('Bridge');
+
+export class BridgeManager {
+  private sessions_ = new Map<string, QQSession>();
+  private pidToUin_ = new Map<number, string>();
+  private pidPacketClients_ = new Map<number, PacketSender>();
+
+  private onSessionStarted_: SessionStartedCallback | null = null;
+  private onSessionClosed_: SessionClosedCallback | null = null;
+  private onBridgeEvent_: BridgeEventCallback | null = null;
+
+  setSessionStartedCallback(cb: SessionStartedCallback): void { this.onSessionStarted_ = cb; }
+  setSessionClosedCallback(cb: SessionClosedCallback): void { this.onSessionClosed_ = cb; }
+  setEventCallback(cb: BridgeEventCallback): void { this.onBridgeEvent_ = cb; }
+
+  bind(ntqq: NtqqHandler): void {
+    ntqq.registerCmdAll((pkt: PacketInfo) => this.onPacket(pkt));
+  }
+
+  onPidDisconnected(pid: number): void {
+    this.pidPacketClients_.delete(pid);
+    const uin = this.pidToUin_.get(pid);
+    if (!uin) return;
+
+    this.pidToUin_.delete(pid);
+    const session = this.sessions_.get(uin);
+    if (!session) return;
+
+    session.bridge.detachPid(pid);
+    if (session.bridge.empty) {
+      this.sessions_.delete(uin);
+      log.debug('session closed: UIN=%s', uin);
+      if (this.onSessionClosed_) this.onSessionClosed_(uin);
+    }
+  }
+
+  private static isRealUin(uin: string): boolean {
+    if (!uin || uin === '0') return false;
+    return /^\d+$/.test(uin) && uin.length >= 5;
+  }
+
+  onHookLogin(pid: number, uin: string, packetClient: PacketSender): void {
+    if (!BridgeManager.isRealUin(uin)) return;
+
+    this.pidPacketClients_.set(pid, packetClient);
+
+    const { session, created } = this.ensureSession(uin);
+    session.bridge.attachPid(pid);
+    session.bridge.setPacketClient(packetClient);
+    this.pidToUin_.set(pid, uin);
+
+    if (created) {
+      log.debug('session started: UIN=%s', uin);
+      if (this.onSessionStarted_) {
+        this.onSessionStarted_(uin, session.qqInfo, session.bridge);
+      }
+    }
+  }
+
+  private onPacket(pkt: PacketInfo): void {
+    if (!pkt.uin || !BridgeManager.isRealUin(pkt.uin)) return;
+    const uin = pkt.uin;
+
+    // Ensure session exists
+    const { session, created } = this.ensureSession(uin);
+
+    // Attach PID if known
+    if (pkt.pid && this.pidPacketClients_.has(pkt.pid)) {
+      session.bridge.attachPid(pkt.pid);
+      this.pidToUin_.set(pkt.pid, uin);
+
+      const client = this.pidPacketClients_.get(pkt.pid);
+      if (client) session.bridge.setPacketClient(client);
+    }
+
+    // Notify session started on first real packet
+    if (created) {
+      log.debug('session started: UIN=%s', uin);
+      if (this.onSessionStarted_) {
+        this.onSessionStarted_(uin, session.qqInfo, session.bridge);
+      }
+    }
+
+    // Dispatch packet to bridge
+    session.bridge.onPacket(pkt);
+  }
+
+  private ensureSession(uin: string): { session: QQSession; created: boolean } {
+    let session = this.sessions_.get(uin);
+    if (session) return { session, created: false };
+
+    const qqInfo = new QQInfo(uin);
+    const bridge = new Bridge(qqInfo);
+    session = { qqInfo, bridge };
+    this.sessions_.set(uin, session);
+
+    // Wire event callback
+    bridge.setEventCallback((event) => {
+      if (this.onBridgeEvent_) this.onBridgeEvent_(uin, event);
+    });
+
+    return { session, created: true };
+  }
+
+  getSession(uin: string): QQSession | null {
+    return this.sessions_.get(uin) ?? null;
+  }
+
+  get sessions(): Map<string, { qqInfo: QQInfo; bridge: Bridge }> {
+    return this.sessions_;
+  }
+}

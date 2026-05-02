@@ -1,0 +1,94 @@
+name: Dev Build
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      actions: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "standard"
+            script: "build"
+            suffix: ""
+          - name: "webui"
+            script: "build:all"
+            suffix: "-WebUI"
+    steps:
+      - name: Delete old artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let page = 1;
+            while (true) {
+              const { data: { artifacts } } = await github.rest.actions.listArtifactsForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+                page,
+              });
+              if (artifacts.length === 0) break;
+              for (const artifact of artifacts) {
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+                console.log(`Deleted artifact: ${artifact.name}`);
+              }
+              page++;
+            }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build project
+        run: pnpm run ${{ matrix.script }}
+
+      - name: Verify native files
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist\native\snowluma-win32-x64.node")) { throw "Missing dist\native\snowluma-win32-x64.node" }
+          if (!(Test-Path "dist\native\snowluma-win32-x64.dll")) { throw "Missing dist\native\snowluma-win32-x64.dll" }
+
+      - name: Bundle runtime dependencies
+        working-directory: dist
+        run: npm install --omit=dev
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          Copy-Item (Get-Command node).Source -Destination "dist\node.exe"
+          Compress-Archive -Path "dist\*" -DestinationPath "SnowLuma-dev${{ matrix.suffix }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnowLuma-dev-${{ github.sha }}${{ matrix.suffix }}
+          path: SnowLuma-dev${{ matrix.suffix }}.zip
+          retention-days: 3
+          overwrite: true

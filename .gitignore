@@ -1,0 +1,27 @@
+out
+build
+build-*
+CMakePresets.json
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.so
+*.dylib
+*.a
+*.lib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+_deps/
+.claude
+
+# Runtime generated
+config.json
+/node_modules
+/dist
+/.vscode

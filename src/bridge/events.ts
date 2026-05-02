@@ -1,0 +1,211 @@
+// Bridge event types and MessageElement.
+// Port of src/bridge/include/bridge/events.h
+
+export interface MessageElement {
+  type: string;       // 'text'|'at'|'face'|'mface'|'image'|'video'|'record'|'file'|'json'|'xml'|'reply'|'poke'|'forward'
+  text?: string;
+  faceId?: number;
+  targetUin?: number;
+  uid?: string;
+  imageUrl?: string;
+  fileId?: string;
+  thumbFileId?: string;
+  fileName?: string;
+  fileSize?: number;
+  replySeq?: number;
+  url?: string;
+  subType?: number;
+  duration?: number;
+  width?: number;
+  height?: number;
+  summary?: string;
+  flash?: boolean;
+  resId?: string;
+  fileHash?: string;
+  mediaNode?: {
+    fileUuid?: string;
+    storeId?: number;
+    uploadTime?: number;
+    ttl?: number;
+    subType?: number;
+    info?: {
+      fileSize?: number;
+      fileHash?: string;
+      fileSha1?: string;
+      fileName?: string;
+      width?: number;
+      height?: number;
+      time?: number;
+      original?: number;
+      type?: {
+        type?: number;
+        picFormat?: number;
+        videoFormat?: number;
+        voiceFormat?: number;
+      };
+    };
+  };
+}
+
+export interface ForwardNodePayload {
+  userUin: number;
+  nickname: string;
+  elements: MessageElement[];
+}
+
+export interface QQEvent {
+  time: number;
+  selfUin: number;
+}
+
+export interface FriendMessage extends QQEvent {
+  kind: 'friend_message';
+  senderUin: number;
+  senderNick: string;
+  msgSeq: number;
+  msgId: number;
+  elements: MessageElement[];
+}
+
+export interface GroupMessage extends QQEvent {
+  kind: 'group_message';
+  groupId: number;
+  senderUin: number;
+  senderNick: string;
+  senderCard: string;
+  senderRole: string;
+  msgSeq: number;
+  msgId: number;
+  elements: MessageElement[];
+}
+
+export interface TempMessage extends QQEvent {
+  kind: 'temp_message';
+  senderUin: number;
+  groupId: number;
+  senderNick: string;
+  msgSeq: number;
+  elements: MessageElement[];
+}
+
+export interface GroupMemberJoin extends QQEvent {
+  kind: 'group_member_join';
+  groupId: number;
+  userUin: number;
+  operatorUin: number;
+}
+
+export interface GroupMemberLeave extends QQEvent {
+  kind: 'group_member_leave';
+  groupId: number;
+  userUin: number;
+  operatorUin: number;
+  isKick: boolean;
+}
+
+export interface GroupMuteEvent extends QQEvent {
+  kind: 'group_mute';
+  groupId: number;
+  userUin: number;
+  operatorUin: number;
+  duration: number;
+}
+
+export interface GroupAdminEvent extends QQEvent {
+  kind: 'group_admin';
+  groupId: number;
+  userUin: number;
+  set: boolean;
+}
+
+export interface FriendRecall extends QQEvent {
+  kind: 'friend_recall';
+  userUin: number;
+  msgSeq: number;
+}
+
+export interface GroupRecallEvent extends QQEvent {
+  kind: 'group_recall';
+  groupId: number;
+  operatorUin: number;
+  authorUin: number;
+  msgSeq: number;
+}
+
+export interface FriendRequestEvent extends QQEvent {
+  kind: 'friend_request';
+  fromUin: number;
+  message: string;
+  flag: string;
+}
+
+export interface GroupInviteEvent extends QQEvent {
+  kind: 'group_invite';
+  groupId: number;
+  fromUin: number;
+  subType: string;
+  message: string;
+  flag: string;
+}
+
+export interface FriendPokeEvent extends QQEvent {
+  kind: 'friend_poke';
+  userUin: number;
+  targetUin: number;
+  action: string;
+  suffix: string;
+  actionImgUrl: string;
+}
+
+export interface GroupPokeEvent extends QQEvent {
+  kind: 'group_poke';
+  groupId: number;
+  userUin: number;
+  targetUin: number;
+  action: string;
+  suffix: string;
+  actionImgUrl: string;
+}
+
+export interface GroupEssenceEvent extends QQEvent {
+  kind: 'group_essence';
+  groupId: number;
+  senderUin: number;
+  operatorUin: number;
+  msgSeq: number;
+  random: number;
+  set: boolean;
+}
+
+export interface GroupFileUploadEvent extends QQEvent {
+  kind: 'group_file_upload';
+  groupId: number;
+  userUin: number;
+  fileId: string;
+  fileName: string;
+  fileSize: number;
+  busId: number;
+}
+
+export interface FriendAddEvent extends QQEvent {
+  kind: 'friend_add';
+  userUin: number;
+}
+
+export type QQEventVariant =
+  | FriendMessage
+  | GroupMessage
+  | TempMessage
+  | GroupMemberJoin
+  | GroupMemberLeave
+  | GroupMuteEvent
+  | GroupAdminEvent
+  | FriendRecall
+  | GroupRecallEvent
+  | FriendRequestEvent
+  | GroupInviteEvent
+  | FriendPokeEvent
+  | GroupPokeEvent
+  | GroupEssenceEvent
+  | GroupFileUploadEvent
+  | FriendAddEvent;
