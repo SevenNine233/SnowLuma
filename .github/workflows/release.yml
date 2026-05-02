@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -57,10 +59,44 @@ jobs:
           Copy-Item (Get-Command node).Source -Destination "dist\node.exe"
           Compress-Archive -Path "dist\*" -DestinationPath "SnowLuma-${{ github.ref_name }}-${{ matrix.name }}.zip"
 
+      - name: Generate release note
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $previousTag = git describe --tags --abbrev=0 "$tag^" 2>$null
+          if ($LASTEXITCODE -ne 0) { $previousTag = "" }
+          if ($previousTag) {
+            $range = "$previousTag..$tag"
+            $changes = git log --pretty=format:"- %s (%h)" $range
+          } else {
+            $changes = git log --pretty=format:"- %s (%h)" $tag
+          }
+          if (!$changes) { $changes = "- No commit changes detected." }
+          $body = @"
+          # SnowLuma $tag
+
+          ## 发布概览
+          本次发布提供 SnowLuma 的 Windows x64 构建产物。
+
+          ## 下载说明
+          - ``SnowLuma-$tag-win-x64.zip``：核心运行时版本。
+          - ``SnowLuma-$tag-win-x64-webui.zip``：包含 WebUI 静态资源的完整版本。
+
+          ## 更新内容
+          $changes
+
+          ## 使用说明
+          - 仅支持 Windows x64 环境。
+          - 压缩包内已包含 ``node.exe`` 与运行时依赖。
+          - 如需在浏览器中选择进程、调整配置或查看日志，请使用 WebUI 版本。
+          "@
+          $body -replace "(?m)^          ", "" | Set-Content -Path "release-notes.md" -Encoding utf8
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: SnowLuma-*.zip
-          generate_release_notes: true
+          body_path: release-notes.md
+          overwrite_files: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
