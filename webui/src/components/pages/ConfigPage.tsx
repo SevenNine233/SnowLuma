@@ -16,6 +16,10 @@ interface ConfigPageProps {
   onConfigChange: (config: OneBotConfig) => void;
 }
 
+function qqAvatarUrl(uin: string): string {
+  return `/avatar/${encodeURIComponent(uin)}`;
+}
+
 export function ConfigPage({
   qqList, selectedUin, config, saveStatus,
   onSelectAccount, onSave, onConfigChange,
@@ -63,7 +67,7 @@ export function ConfigPage({
                   }}
                 >
                   <div
-                    className="size-7 rounded-md flex items-center justify-center text-white text-[11px] font-bold shrink-0"
+                    className="size-7 rounded-md flex items-center justify-center text-white text-[11px] font-bold shrink-0 overflow-hidden"
                     style={{
                       background: isActive
                         ? 'linear-gradient(135deg, var(--accent), #818cf8)'
@@ -71,7 +75,12 @@ export function ConfigPage({
                       color: isActive ? '#fff' : 'var(--text-secondary)',
                     }}
                   >
-                    {q.nickname[0]?.toUpperCase() || '?'}
+                    <img
+                      src={qqAvatarUrl(q.uin)}
+                      alt={q.nickname || q.uin}
+                      className="size-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div

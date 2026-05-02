@@ -22,6 +22,10 @@ const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const AVATAR_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AVATAR_BROWSER_CACHE_SECONDS = 30 * 24 * 60 * 60;
+
+const avatarCache = new Map<string, { body: Uint8Array; contentType: string; expiresAt: number }>();
 
 function purgeExpiredTokens() {
   const now = Date.now();
@@ -32,6 +36,23 @@ function purgeExpiredTokens() {
 
 function getClientIp(req: Request): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? '127.0.0.1';
+}
+
+async function fetchQqAvatar(uin: string): Promise<{ body: Uint8Array; contentType: string }> {
+  const response = await fetch(`https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(uin)}&s=100`, {
+    headers: {
+      'User-Agent': 'SnowLuma WebUI',
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`avatar upstream responded with ${response.status}`);
+  }
+
+  const contentType = response.headers.get('content-type') || 'image/jpeg';
+  const body = new Uint8Array(await response.arrayBuffer());
+  return { body, contentType };
 }
 
 export function initWebUI(port: number = 8080, oneBotManager: OneBotManager, hookManager?: HookManager) {
@@ -96,6 +117,33 @@ export function initWebUI(port: number = 8080, oneBotManager: OneBotManager, hoo
     } catch {
       return c.json({ success: false, message: '请求格式错误' }, 400);
     }
+  });
+
+  app.get('/avatar/:uin', async (c) => {
+    const uin = c.req.param('uin');
+    if (!/^\d{5,12}$/.test(uin)) {
+      return c.text('invalid uin', 400);
+    }
+
+    const now = Date.now();
+    let cached = avatarCache.get(uin);
+    if (!cached || cached.expiresAt <= now) {
+      try {
+        const avatar = await fetchQqAvatar(uin);
+        cached = { ...avatar, expiresAt: now + AVATAR_CACHE_TTL_MS };
+        avatarCache.set(uin, cached);
+      } catch (err) {
+        log.warn('failed to proxy avatar for UIN %s: %s', uin, err instanceof Error ? err.message : String(err));
+        if (!cached) return c.text('avatar unavailable', 502);
+      }
+    }
+
+    return new Response(cached.body, {
+      headers: {
+        'Content-Type': cached.contentType,
+        'Cache-Control': `public, max-age=${AVATAR_BROWSER_CACHE_SECONDS}, immutable`,
+      },
+    });
   });
 
   // API Routes
