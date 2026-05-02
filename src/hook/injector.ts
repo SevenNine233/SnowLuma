@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export interface ManualMapHandle {
   base: bigint;
   entry: bigint;
+  exceptionTable: bigint;
   size: number;
 }
 
