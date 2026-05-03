@@ -111,9 +111,10 @@ function emit(level: LogLevel, options: LogOptions, args: unknown[]): void {
   const stream = level === 'warn' || level === 'error' ? process.stderr : process.stdout;
   // Strip ASCII control characters before writing to terminal to prevent
   // BEL (0x07) in user-provided strings (e.g. group member names) from
-  // triggering Windows system beep sounds.
+  // triggering Windows system beep sounds. ESC (0x1B) is preserved so the
+  // ANSI color sequences emitted by render() actually reach the terminal.
   // eslint-disable-next-line no-control-regex
-  stream.write(line.replace(/[\x00-\x1F\x7F]/g, '') + '\n');
+  stream.write(line.replace(/[\x00-\x1A\x1C-\x1F\x7F]/g, '') + '\n');
 }
 
 export function getRecentLogs(limit = 300): LogEntry[] {
