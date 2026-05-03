@@ -47,6 +47,16 @@ export class HookManager {
       state.path = proc.path;
     }
 
+    // Probe every freshly-enumerated PID in parallel to detect hooks left over
+    // from a previous SnowLuma run. Positive hits are reconnected immediately
+    // so the login-state snapshot can update the UI without a manual load.
+    await Promise.all(
+      processes
+        .map(proc => this.states.get(proc.pid)!)
+        .filter(state => !state.injected && !this.loadTasks.has(state.pid))
+        .map(state => this.probeAndSeed(state)),
+    );
+
     const seen = new Set(processes.map(proc => proc.pid));
     const result: HookProcessInfo[] = [];
     for (const proc of processes) {
@@ -109,10 +119,18 @@ export class HookManager {
 
     try {
       if (!state.injected) {
-        state.injectResult = injectHookProcess(pid);
-        state.injected = true;
-        state.method = state.injectResult.method;
-        log.info('SnowLuma loaded into PID=%d via %s', pid, state.method);
+        // Fast path: if QQ.exe still hosts a hook DLL from a previous SnowLuma
+        // run, the control pipe is already listed. Skip re-injection on a hit.
+        if (await QqHookClient.probePipe(pid)) {
+          state.injected = true;
+          state.method = 'reconnect';
+          log.info('SnowLuma reconnected to existing hook in PID=%d', pid);
+        } else {
+          state.injectResult = injectHookProcess(pid);
+          state.injected = true;
+          state.method = state.injectResult.method;
+          log.info('SnowLuma loaded into PID=%d via %s', pid, state.method);
+        }
       }
       state.status = state.connected ? (state.loggedIn ? 'online' : 'loaded') : 'loaded';
       this.startClient(state);
@@ -248,11 +266,14 @@ export class HookManager {
   }
 
   private handleLoginState(state: HookProcessState, loginState: QqHookLoginState): void {
+    const wasLoggedIn = state.loggedIn;
+    const previousUin = state.uin;
     state.uin = loginState.uin || loginState.uinNumber.toString();
     state.loggedIn = loginState.loggedIn && isRealUin(state.uin);
     state.status = state.loggedIn ? 'online' : (state.connected ? 'loaded' : state.status);
 
     if (!state.loggedIn || !state.sender) return;
+    if (wasLoggedIn && previousUin === state.uin) return;
 
     this.bridgeManager.onHookLogin(state.pid, state.uin, state.sender);
     log.success('login detected: PID=%d UIN=%s', state.pid, state.uin);

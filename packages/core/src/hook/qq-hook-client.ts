@@ -1,6 +1,7 @@
 import net from 'net';
 import os from 'os';
 import path from 'path';
+import { promises as fs } from 'fs';
 import { EventEmitter } from 'events';
 
 export const PIPE_MAGIC = 0x31504851;
@@ -98,7 +99,7 @@ function mojoPipeName(pid: number, suffix: string): string {
   if (process.platform === 'win32') {
     return `\\\\.\\pipe\\mojo.${pid}.${suffix}`;
   }
-  return path.join(linuxRuntimeDir(), `mojo.${pid}.${suffix}`);
+  return path.join(linuxRuntimeDir(), `mojo.${pid}.${suffix}.sock`);
 }
 
 function toBuffer(body: Buffer | Uint8Array | string | null | undefined): Buffer {
@@ -280,6 +281,27 @@ export class QqHookClient extends EventEmitter {
 
   static recvPipeName(pid: number): string {
     return mojoPipeName(pid, 'recv');
+  }
+
+  /**
+   * Lightweight liveness check for the control pipe. Used to detect whether an
+   * existing SnowLuma hook is still hosted inside the QQ.exe process without
+   * opening the pipe, so probing cannot disturb the first real client connect.
+   */
+  static async probePipe(pid: number): Promise<boolean> {
+    try {
+      const pipeFileName = process.platform === 'win32'
+        ? `mojo.${pid}.control`
+        : `mojo.${pid}.control.sock`;
+      if (process.platform === 'win32') {
+        const names = await fs.readdir('\\\\.\\pipe\\');
+        return names.some(name => name.toLowerCase() === pipeFileName.toLowerCase());
+      }
+      const names = await fs.readdir(linuxRuntimeDir());
+      return names.includes(pipeFileName);
+    } catch {
+      return false;
+    }
   }
 
   async connect(): Promise<QqHookHello> {
@@ -592,8 +614,8 @@ export class QqHookClient extends EventEmitter {
     const previous = this.loginState;
     const next = { loggedIn, uin, uinNumber };
     this.loginState = next;
+    this.emit('loginState', next);
     if (previous.loggedIn !== next.loggedIn || previous.uin !== next.uin) {
-      this.emit('loginState', next);
       if (next.loggedIn) {
         const waiters = this.loginWaiters;
         this.loginWaiters = [];
