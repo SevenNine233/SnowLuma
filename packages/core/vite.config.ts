@@ -1,5 +1,6 @@
 import { defineConfig, PluginOption, UserConfig } from 'vite';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import path from 'path';
 import { builtinModules } from 'module';
 import cp from 'vite-plugin-cp';
@@ -22,18 +23,39 @@ const nodeModules = [...builtinModules, ...builtinModules.map((m) => `node:${m}`
 const runtimeSrc = toPosix(runtimeDir);
 const nativeSrc = toPosix(nativeDir);
 
-// Only the runtime distribution assets land in dist/.
-// (.gitignore and other dev artifacts must NOT be shipped.)
-const runtimeDistFiles = ['launcher.bat', 'package.json'];
-
-// Only ship native binaries matching the current build host's platform/arch.
-// Override via SNOWLUMA_TARGET=<platform>-<arch> for cross-target packaging.
+// Target selection: `SNOWLUMA_TARGET=<platform>-<arch>` overrides the host
+// detection, enabling cross-target packaging on CI.
 const targetTriple = process.env.SNOWLUMA_TARGET ?? `${process.platform}-${process.arch}`;
-const nativeGlobs = [
-  `snowluma-${targetTriple}.dll`,
-  `snowluma-${targetTriple}.node`,
-  `websocket-${targetTriple}.node`,
+const targetPlatform = targetTriple.split('-')[0];
+
+// Runtime scaffolding files copied into dist/. The NTQQ hook is Windows-only,
+// so its launcher/shell script differ per target.
+const runtimeDistFiles = ['package.json',
+  targetPlatform === 'win32' ? 'launcher.bat' : 'launcher.sh',
 ];
+
+// Native binaries shipped for the selected target:
+//   * `snowluma-*.{dll,node}` – NTQQ hook (Windows-only).
+//   * `websocket-*.node`      – RFC 6455 framing/mask addon (all platforms).
+const nativeFiles = [
+  `websocket-${targetTriple}.node`,
+  ...(targetPlatform === 'win32'
+    ? [`snowluma-${targetTriple}.dll`, `snowluma-${targetTriple}.node`]
+    : []),
+];
+
+// Fail fast if any expected native binary is missing from packages/runtime/native/.
+// vite-plugin-cp only emits a warning on missing source files; we want a hard
+// error so CI can't accidentally ship an incomplete archive.
+const missingNatives = nativeFiles.filter(
+  (f) => !fs.existsSync(path.join(nativeDir, f)),
+);
+if (missingNatives.length > 0) {
+  throw new Error(
+    `Missing native binaries for target ${targetTriple}:\n` +
+    missingNatives.map((f) => `  - ${path.join(nativeDir, f)}`).join('\n'),
+  );
+}
 
 const BaseConfigPlugin: PluginOption[] = [
   cp({
@@ -43,8 +65,8 @@ const BaseConfigPlugin: PluginOption[] = [
         dest: distDir,
         flatten: true,
       })),
-      ...nativeGlobs.map((g) => ({
-        src: `${nativeSrc}/${g}`,
+      ...nativeFiles.map((f) => ({
+        src: `${nativeSrc}/${f}`,
         dest: path.join(distDir, 'native'),
         flatten: true,
       })),

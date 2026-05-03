@@ -8,8 +8,8 @@ on:
       - 'v*'
 
 jobs:
-  build:
-    runs-on: windows-latest
+  cleanup:
+    runs-on: ubuntu-latest
     permissions:
       actions: write
       contents: read
@@ -38,6 +38,25 @@ jobs:
               page++;
             }
 
+  build:
+    needs: cleanup
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: win-x64
+            os: windows-latest
+            target: win32-x64
+          - name: linux-x64
+            os: ubuntu-latest
+            target: linux-x64
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -58,45 +77,41 @@ jobs:
 
       # Always builds the WebUI flavor — no separate "core-only" artifact.
       - name: Build project
+        env:
+          SNOWLUMA_TARGET: ${{ matrix.target }}
         run: pnpm run build:all
-
-      - name: Verify native files
-        shell: pwsh
-        run: |
-          if (!(Test-Path "dist\native\snowluma-win32-x64.node")) { throw "Missing dist\native\snowluma-win32-x64.node" }
-          if (!(Test-Path "dist\native\snowluma-win32-x64.dll")) { throw "Missing dist\native\snowluma-win32-x64.dll" }
-          if (!(Test-Path "dist\native\websocket-win32-x64.node")) { throw "Missing dist\native\websocket-win32-x64.node" }
 
       - name: Bundle runtime dependencies
         working-directory: dist
         run: npm install --omit=dev
 
-      # Two artifacts:
-      #   * SnowLuma-dev.zip          – full bundle, ships node.exe (zero-install)
-      #   * SnowLuma-dev-no-node.zip  – same bundle without node.exe (user provides Node >= 22)
-      - name: Package artifact (no-node)
+      # Naming convention:
+      #   SnowLuma-dev-<arch>.zip|tar.gz        – zero-install (node bundled)
+      #   SnowLuma-dev-<arch>-lite.zip|tar.gz   – user provides Node >= 22
+      - name: Package (windows)
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist\*" -DestinationPath "SnowLuma-dev-no-node.zip"
-
-      - name: Package artifact (with node.exe)
-        shell: pwsh
-        run: |
+          Compress-Archive -Path "dist\*" -DestinationPath "SnowLuma-dev-${{ matrix.name }}-lite.zip"
           Copy-Item (Get-Command node).Source -Destination "dist\node.exe"
-          Compress-Archive -Path "dist\*" -DestinationPath "SnowLuma-dev.zip"
+          Compress-Archive -Path "dist\*" -DestinationPath "SnowLuma-dev-${{ matrix.name }}.zip"
 
-      - name: Upload artifact (with node.exe)
+      - name: Package (linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          chmod +x dist/launcher.sh
+          tar -czf "SnowLuma-dev-${{ matrix.name }}-lite.tar.gz" -C dist .
+          cp "$(command -v node)" dist/node
+          chmod +x dist/node
+          tar -czf "SnowLuma-dev-${{ matrix.name }}.tar.gz" -C dist .
+
+      # Single upload step — glob picks up both variants (.zip on Windows,
+      # .tar.gz on Linux) for this matrix row.
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SnowLuma-dev-${{ github.sha }}
-          path: SnowLuma-dev.zip
+          name: SnowLuma-dev-${{ github.sha }}-${{ matrix.name }}
+          path: SnowLuma-dev-${{ matrix.name }}*
           retention-days: 3
           overwrite: true
-
-      - name: Upload artifact (no-node)
-        uses: actions/upload-artifact@v4
-        with:
-          name: SnowLuma-dev-${{ github.sha }}-no-node
-          path: SnowLuma-dev-no-node.zip
-          retention-days: 3
-          overwrite: true
+          if-no-files-found: error
