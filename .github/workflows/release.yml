@@ -10,14 +10,6 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: "win-x64"
-            script: "build"
-          - name: "win-x64-webui"
-            script: "build:all"
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -40,25 +32,34 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Root scripts delegate to `moon run`; produces dist/ at repo root.
+      # Always builds the WebUI flavor — no separate "core-only" artifact.
       - name: Build project
-        run: pnpm run ${{ matrix.script }}
+        run: pnpm run build:all
 
       - name: Verify native files
         shell: pwsh
         run: |
           if (!(Test-Path "dist\native\snowluma-win32-x64.node")) { throw "Missing dist\native\snowluma-win32-x64.node" }
           if (!(Test-Path "dist\native\snowluma-win32-x64.dll")) { throw "Missing dist\native\snowluma-win32-x64.dll" }
+          if (!(Test-Path "dist\native\websocket-win32-x64.node")) { throw "Missing dist\native\websocket-win32-x64.node" }
 
       - name: Bundle runtime dependencies
         working-directory: dist
         run: npm install --omit=dev
 
-      - name: Package release
+      # Two release archives:
+      #   * SnowLuma-<tag>-win-x64.zip          – zero-install bundle (ships node.exe)
+      #   * SnowLuma-<tag>-win-x64-no-node.zip  – same bundle without node.exe
+      - name: Package release (no-node)
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\*" -DestinationPath "SnowLuma-${{ github.ref_name }}-win-x64-no-node.zip"
+
+      - name: Package release (with node.exe)
         shell: pwsh
         run: |
           Copy-Item (Get-Command node).Source -Destination "dist\node.exe"
-          Compress-Archive -Path "dist\*" -DestinationPath "SnowLuma-${{ github.ref_name }}-${{ matrix.name }}.zip"
+          Compress-Archive -Path "dist\*" -DestinationPath "SnowLuma-${{ github.ref_name }}-win-x64.zip"
 
       - name: Generate release note
         shell: pwsh
@@ -77,19 +78,19 @@ jobs:
           # SnowLuma $tag
 
           ## 发布概览
-          本次发布提供 SnowLuma 的 Windows x64 构建产物。
+          本次发布提供 SnowLuma 的 Windows x64 构建产物，默认包含 WebUI。
 
           ## 下载说明
-          - ``SnowLuma-$tag-win-x64.zip``：核心运行时版本。
-          - ``SnowLuma-$tag-win-x64-webui.zip``：包含 WebUI 静态资源的完整版本。
+          - ``SnowLuma-$tag-win-x64.zip``：完整版本，内置 ``node.exe`` 与运行时依赖，解压即可使用。
+          - ``SnowLuma-$tag-win-x64-no-node.zip``：不含 ``node.exe``，需自行安装 Node.js 22 及以上版本后再运行 ``launcher.bat`` 或 ``node index.mjs``。
 
           ## 更新内容
           $changes
 
           ## 使用说明
           - 仅支持 Windows x64 环境。
-          - 压缩包内已包含 ``node.exe`` 与运行时依赖。
-          - 如需在浏览器中选择进程、调整配置或查看日志，请使用 WebUI 版本。
+          - 两个压缩包均已内置 WebUI 静态资源；启动后访问 http://localhost:8080 选择进程、调整配置或查看日志。
+          - ``no-node`` 版本要求系统 ``node`` 可执行文件版本 >= 22。
           "@
           $body -replace "(?m)^          ", "" | Set-Content -Path "release-notes.md" -Encoding utf8
 
