@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { protoDecode, protoEncode, type ProtoSchema } from '../protobuf/decode';
-import { WireMessage, encodeKey, encodeVarint, WireType } from '../protobuf/wire';
+import { protoDecode, protoEncode, type ProtoSchema } from '../src/protobuf/decode';
+import { WireMessage, encodeKey, encodeVarint, WireType } from '../src/protobuf/wire';
 
 describe('protoDecode', () => {
   const SimpleSchema = {

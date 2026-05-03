@@ -1,0 +1,32 @@
+{
+  "name": "@snowluma/core",
+  "version": "0.1.0",
+  "description": "SnowLuma core - NTQQ packet sniffer with Node.js native addon",
+  "private": true,
+  "type": "module",
+  "main": "../../dist/index.mjs",
+  "scripts": {
+    "build": "vite build",
+    "build:all": "cross-env BUILD_WEBUI=true vite build",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1.19.14",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@types/node": "^24.12.2",
+    "@types/ws": "^8.18.1",
+    "cross-env": "^10.1.0",
+    "hono": "^4.12.14",
+    "tsx": "^4.21.0",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-cp": "^6.0.3",
+    "vitest": "^4.1.4"
+  }
+}

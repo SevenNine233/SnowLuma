@@ -1,9 +1,0 @@
-{
-  "name": "snowluma",
-  "version": "0.1.0",
-  "type": "module",
-  "main": "index.mjs",
-  "dependencies": {
-    "ws": "^8.20.0"
-  }
-}

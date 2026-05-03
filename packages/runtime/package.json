@@ -1,0 +1,11 @@
+{
+  "name": "@snowluma/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "description": "SnowLuma runtime distribution manifest: ships into dist/ (launcher.bat, package.json, native/*.dll, native/*.node)",
+  "dependencies": {
+    "ws": "^8.20.0"
+  }
+}

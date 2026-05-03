@@ -1,21 +1,10 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ES2022"],
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": false,
-    "declarationMap": false,
-    "sourceMap": false,
-    "resolveJsonModule": true,
-    "types": ["node"]
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "native", "src/tests"]
+  "// description": "Monorepo root TS project. Has no sources of its own; each workspace package owns a real tsconfig.",
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "include": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/webui" }
+  ]
 }

@@ -9,7 +9,7 @@ import {
   fieldAsUint32,
   fieldAsString,
   fieldAsBool,
-} from '../protobuf/wire';
+} from '../src/protobuf/wire';
 
 // Helper to build bytes from number array
 function bytes(...vals: number[]): Uint8Array {

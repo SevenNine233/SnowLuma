@@ -1,36 +1,23 @@
 {
-  "name": "snowluma",
+  "name": "snowluma-monorepo",
   "version": "0.1.0",
-  "description": "SnowLuma - NTQQ packet sniffer with Node.js native addon",
+  "description": "SnowLuma monorepo workspace (pnpm)",
+  "private": true,
   "type": "module",
-  "main": "dist/index.mjs",
   "scripts": {
-    "testtypes": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "build": "vite build",
+    "build": "pnpm --filter @snowluma/core build",
     "build:webui": "pnpm --filter webui build",
-    "build:all": "cross-env BUILD_WEBUI=true vite build && pnpm --filter webui build",
-    "dev": "pnpm --parallel run dev",
-    "dev:core": "tsx src/index.ts",
+    "build:all": "pnpm --filter @snowluma/core build:all && pnpm --filter webui build",
+    "dev": "pnpm --filter @snowluma/core dev",
     "dev:web": "pnpm --filter webui dev",
+    "test": "pnpm --filter @snowluma/core test",
+    "test:watch": "pnpm --filter @snowluma/core test:watch",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm -r --if-present lint",
     "start": "node dist/index.mjs"
   },
-  "dependencies": {
-    "ws": "^8.20.0"
-  },
   "devDependencies": {
-    "@hono/node-server": "^1.19.14",
-    "@rollup/plugin-node-resolve": "^16.0.3",
-    "@types/node": "^24.12.2",
-    "@types/ws": "^8.18.1",
-    "cross-env": "^10.1.0",
-    "hono": "^4.12.14",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.2",
-    "vite": "catalog:",
-    "vite-plugin-cp": "^6.0.3",
-    "vitest": "^4.1.4"
+    "typescript": "catalog:"
   },
   "pnpm": {
     "peerDependencyRules": {
@@ -38,5 +25,9 @@
         "eslint-plugin-react-hooks>eslint": "10"
       }
     }
+  },
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
   }
 }

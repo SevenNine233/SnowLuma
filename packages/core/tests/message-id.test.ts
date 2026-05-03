@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hashMessageIdInt32, GROUP_MESSAGE_EVENT, PRIVATE_MESSAGE_EVENT } from '../onebot/message-id';
+import { hashMessageIdInt32, GROUP_MESSAGE_EVENT, PRIVATE_MESSAGE_EVENT } from '../src/onebot/message-id';
 
 describe('hashMessageIdInt32', () => {
   it('returns consistent hash for same inputs', () => {

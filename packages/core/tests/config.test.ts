@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadOneBotConfig, makeDefaultOneBotConfig } from '../onebot/config';
+import { loadOneBotConfig, makeDefaultOneBotConfig } from '../src/onebot/config';
 
 describe('makeDefaultOneBotConfig', () => {
   it('returns default config structure', () => {

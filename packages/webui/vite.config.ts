@@ -13,7 +13,8 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../dist/client',
+    // Emit into the monorepo-root dist/client so the bundled core can serve it via Hono.
+    outDir: '../../dist/client',
     emptyOutDir: true
   }
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toHex, fromHex, hexPreview } from '../utils/hex';
+import { toHex, fromHex, hexPreview } from '../src/utils/hex';
 
 describe('toHex', () => {
   it('converts empty buffer', () => {

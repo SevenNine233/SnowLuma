@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMessage } from '../onebot/message-parser';
+import { parseMessage } from '../src/onebot/message-parser';
 
 describe('parseMessage', () => {
   describe('plain text', () => {
@@ -151,7 +151,8 @@ describe('parseMessage', () => {
       );
       expect(result).toHaveLength(1);
       expect(result[0].type).toBe('json');
-      const parsed = JSON.parse(result[0].text);
+      expect(result[0].text).toBeDefined();
+      const parsed = JSON.parse(result[0].text!);
       expect(parsed.app).toBe('com.tencent.structmsg');
       expect(parsed.meta.news.title).toBe('Test');
     });
@@ -204,7 +205,8 @@ describe('parseMessage', () => {
       );
       expect(result).toHaveLength(1);
       expect(result[0].type).toBe('json');
-      const parsed = JSON.parse(result[0].text);
+      expect(result[0].text).toBeDefined();
+      const parsed = JSON.parse(result[0].text!);
       expect(parsed.app).toBe('com.tencent.map');
       expect(parsed.meta.Location.lat).toBe('39.9');
     });
@@ -216,7 +218,8 @@ describe('parseMessage', () => {
       );
       expect(result).toHaveLength(1);
       expect(result[0].type).toBe('json');
-      const parsed = JSON.parse(result[0].text);
+      expect(result[0].text).toBeDefined();
+      const parsed = JSON.parse(result[0].text!);
       expect(parsed.meta.contact.type).toBe('group');
     });
   });

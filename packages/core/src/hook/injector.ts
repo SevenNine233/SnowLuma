@@ -43,11 +43,16 @@ function platformBinaryName(ext: 'node' | 'dll'): string {
 }
 
 function nativeSearchDirs(): string[] {
+  // Several layouts must be supported:
+  //   1. Released zip (flattened dist/): __dirname=<extracted>/, native at <extracted>/native
+  //   2. Repo bundled build (dist/index.mjs): __dirname=<root>/dist, native at <root>/dist/native
+  //   3. Dev via tsx (packages/core/src/hook/injector.ts): __dirname=<root>/packages/core/src/hook
+  //      → walk up to <root>/packages and append runtime/native
   return [
-    path.resolve(__dirname, '..', '..', 'native'),
-    path.resolve(__dirname, '..', 'native'),
+    path.resolve(__dirname, 'native'),
+    path.resolve(__dirname, '..', '..', '..', 'runtime', 'native'),
     path.resolve(process.cwd(), 'dist', 'native'),
-    path.resolve(process.cwd(), 'native'),
+    path.resolve(process.cwd(), 'packages', 'runtime', 'native'),
   ];
 }
 

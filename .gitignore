@@ -22,6 +22,10 @@ _deps/
 
 # Runtime generated
 config.json
-/node_modules
-/dist
-/.vscode
+
+# Node / pnpm / monorepo
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.vscode/
