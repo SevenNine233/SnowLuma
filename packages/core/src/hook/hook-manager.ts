@@ -47,16 +47,6 @@ export class HookManager {
       state.path = proc.path;
     }
 
-    // Probe every freshly-enumerated PID in parallel to detect hooks left over
-    // from a previous SnowLuma run. Positive hits are reconnected immediately
-    // so the login-state snapshot can update the UI without a manual load.
-    await Promise.all(
-      processes
-        .map(proc => this.states.get(proc.pid)!)
-        .filter(state => !state.injected && !this.loadTasks.has(state.pid))
-        .map(state => this.probeAndSeed(state)),
-    );
-
     const seen = new Set(processes.map(proc => proc.pid));
     const result: HookProcessInfo[] = [];
     for (const proc of processes) {
