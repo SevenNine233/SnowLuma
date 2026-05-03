@@ -109,7 +109,11 @@ function emit(level: LogLevel, options: LogOptions, args: unknown[]): void {
   if (logEntries.length > MAX_LOG_ENTRIES) logEntries.shift();
   for (const subscriber of logSubscribers) subscriber(entry);
   const stream = level === 'warn' || level === 'error' ? process.stderr : process.stdout;
-  stream.write(line + '\n');
+  // Strip ASCII control characters before writing to terminal to prevent
+  // BEL (0x07) in user-provided strings (e.g. group member names) from
+  // triggering Windows system beep sounds.
+  // eslint-disable-next-line no-control-regex
+  stream.write(line.replace(/[\x00-\x1F\x7F]/g, '') + '\n');
 }
 
 export function getRecentLogs(limit = 300): LogEntry[] {
