@@ -8,6 +8,7 @@ CMakePresets.json
 *.obj
 *.exe
 *.so
+!native/snowluma-linux-x64.so
 *.dylib
 *.a
 *.lib

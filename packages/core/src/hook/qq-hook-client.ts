@@ -1,4 +1,6 @@
 import net from 'net';
+import os from 'os';
+import path from 'path';
 import { EventEmitter } from 'events';
 
 export const PIPE_MAGIC = 0x31504851;
@@ -81,8 +83,22 @@ interface PendingAck {
   wantReply: boolean;
 }
 
+function linuxRuntimeDir(): string {
+  const explicit = process.env.SNOWLUMA_HOOK_RUNTIME_DIR;
+  if (explicit && explicit.length > 0) return explicit;
+  const xdg = process.env.XDG_RUNTIME_DIR;
+  if (xdg && xdg.length > 0) return xdg;
+  // Mirrors hook_stub.cpp runtime_dir() fallback.
+  // process.geteuid is POSIX-only; cast to allow non-Linux type checks.
+  const uid = typeof process.geteuid === 'function' ? process.geteuid() : os.userInfo().uid;
+  return `/tmp/snowluma-${uid}`;
+}
+
 function mojoPipeName(pid: number, suffix: string): string {
-  return `\\\\.\\pipe\\mojo.${pid}.${suffix}`;
+  if (process.platform === 'win32') {
+    return `\\\\.\\pipe\\mojo.${pid}.${suffix}`;
+  }
+  return path.join(linuxRuntimeDir(), `mojo.${pid}.${suffix}`);
 }
 
 function toBuffer(body: Buffer | Uint8Array | string | null | undefined): Buffer {

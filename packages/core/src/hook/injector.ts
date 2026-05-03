@@ -37,9 +37,19 @@ function loadNativeAddon(addonPath: string): NativeHookAddon {
   return mod.exports as unknown as NativeHookAddon;
 }
 
-function platformBinaryName(ext: 'node' | 'dll'): string {
+type HookBinaryExt = 'node' | 'dll' | 'so';
+
+function platformBinaryName(ext: HookBinaryExt): string {
   if (process.platform === 'win32' && process.arch === 'x64') return `snowluma-win32-x64.${ext}`;
   return `snowluma-${process.platform}-${process.arch}.${ext}`;
+}
+
+function platformInjectableExt(): 'dll' | 'so' {
+  return process.platform === 'win32' ? 'dll' : 'so';
+}
+
+function defaultProcessName(): string {
+  return process.platform === 'win32' ? 'QQ.exe' : 'qq';
 }
 
 function nativeSearchDirs(): string[] {
@@ -56,7 +66,7 @@ function nativeSearchDirs(): string[] {
   ];
 }
 
-export function resolveHookNativePath(ext: 'node' | 'dll'): string | null {
+export function resolveHookNativePath(ext: HookBinaryExt): string | null {
   const fileName = platformBinaryName(ext);
   for (const dir of nativeSearchDirs()) {
     const fullPath = path.join(dir, fileName);
@@ -92,7 +102,7 @@ export function listHookProcesses(): HookProcessBaseInfo[] {
   return [...new Set(addon.getAllMainProcess())]
     .filter(pid => Number.isInteger(pid) && pid > 0)
     .sort((a, b) => a - b)
-    .map(pid => ({ pid, name: 'QQ.exe', path: '' }));
+    .map(pid => ({ pid, name: defaultProcessName(), path: '' }));
 }
 
 export function injectHookProcess(pid: number): HookInjectResult {
@@ -100,9 +110,10 @@ export function injectHookProcess(pid: number): HookInjectResult {
   if (!addon) {
     throw new Error(getNativeHookLoadError() ?? 'hook native addon is not available');
   }
-  const dllPath = resolveHookNativePath('dll');
+  const injectableExt = platformInjectableExt();
+  const dllPath = resolveHookNativePath(injectableExt);
   if (!dllPath) {
-    throw new Error(`No hook DLL found for ${process.platform}-${process.arch}`);
+    throw new Error(`No hook ${injectableExt} found for ${process.platform}-${process.arch}`);
   }
   return { method: 'loadModuleManual', handle: addon.loadModuleManual(pid, dllPath) };
 }
