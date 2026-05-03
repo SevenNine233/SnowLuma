@@ -1,5 +1,5 @@
-import WebSocket, { WebSocketServer } from 'ws';
-import type { IncomingHttpHeaders, IncomingMessage } from 'http';
+import { WebSocket, WebSocketServer } from '@snowluma/websocket';
+import type { IncomingMessage } from 'http';
 import type { ApiHandler } from './api-handler';
 import type { JsonObject, OneBotConfig, WsClientEndpoint, WsRole, WsServerEndpoint } from './types';
 import { createLogger } from '../utils/logger';
@@ -157,7 +157,7 @@ export class WsTransport {
         const conn: ForwardConnection = { socket, role };
         this.forwardConnections.set(socket, conn);
 
-        socket.on('message', (raw) => {
+        socket.on('message', (raw: Buffer) => {
           void this.handleApiMessage(socket, role, raw);
         });
 
@@ -165,14 +165,14 @@ export class WsTransport {
           this.forwardConnections.delete(socket);
         });
 
-        socket.on('error', (error) => {
+        socket.on('error', (error: Error) => {
           log.warn('forward socket error: %s', error instanceof Error ? error.message : String(error));
         });
 
         this.sendBootstrapMetaEvents(socket, role);
       });
 
-      wss.on('error', (error) => {
+      wss.on('error', (error: Error) => {
         log.warn('server error: %s', error instanceof Error ? error.message : String(error));
       });
 
@@ -212,7 +212,7 @@ export class WsTransport {
       this.sendBootstrapMetaEvents(socket, role);
     });
 
-    socket.on('message', (raw) => {
+    socket.on('message', (raw: Buffer) => {
       void this.handleApiMessage(socket, role, raw);
     });
 
@@ -228,12 +228,12 @@ export class WsTransport {
       this.reconnectTimers.add(timer);
     });
 
-    socket.on('error', (error) => {
+    socket.on('error', (error: Error) => {
       log.warn('reverse error %s: %s', endpointUrl, error instanceof Error ? error.message : String(error));
     });
   }
 
-  private async handleApiMessage(socket: WebSocket, role: WsRole, raw: WebSocket.RawData): Promise<void> {
+  private async handleApiMessage(socket: WebSocket, role: WsRole, raw: Buffer | string): Promise<void> {
     if (role !== 'api' && role !== 'universal') return;
 
     const text = rawDataToString(raw);
@@ -309,9 +309,9 @@ function isAuthorized(request: IncomingMessage, token: string): boolean {
   return false;
 }
 
-function rawDataToString(raw: WebSocket.RawData): string {
+function rawDataToString(raw: Buffer | string | ArrayBuffer | ArrayBufferView | Buffer[]): string {
   if (typeof raw === 'string') return raw;
-  if (raw instanceof Buffer) return raw.toString('utf8');
+  if (Buffer.isBuffer(raw)) return raw.toString('utf8');
   if (Array.isArray(raw)) return Buffer.concat(raw).toString('utf8');
   if (raw instanceof ArrayBuffer) return Buffer.from(new Uint8Array(raw)).toString('utf8');
   if (ArrayBuffer.isView(raw)) {
@@ -322,7 +322,7 @@ function rawDataToString(raw: WebSocket.RawData): string {
 
 function safeSend(socket: WebSocket, payload: string): void {
   if (socket.readyState !== WebSocket.OPEN) return;
-  socket.send(payload, (error) => {
+  socket.send(payload, (error?: Error | null) => {
     if (error) {
       log.warn('send error: %s', error instanceof Error ? error.message : String(error));
     }

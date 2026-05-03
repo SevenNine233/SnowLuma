@@ -13,9 +13,9 @@ const nativeDir = path.resolve(runtimeDir, 'native');
 // vite-plugin-cp consumes globs through globby; on Windows we must use POSIX-style separators.
 const toPosix = (p: string) => p.replace(/\\/g, '/');
 
-const external = [
-  'ws'
-];
+// `@snowluma/websocket` is bundled (it's an in-tree TS workspace package), so
+// it must NOT be marked external. Only Node builtins stay external.
+const external: string[] = [];
 
 const nodeModules = [...builtinModules, ...builtinModules.map((m) => `node:${m}`), 'node:sqlite'].flat();
 
@@ -26,6 +26,15 @@ const nativeSrc = toPosix(nativeDir);
 // (.gitignore and other dev artifacts must NOT be shipped.)
 const runtimeDistFiles = ['launcher.bat', 'package.json'];
 
+// Only ship native binaries matching the current build host's platform/arch.
+// Override via SNOWLUMA_TARGET=<platform>-<arch> for cross-target packaging.
+const targetTriple = process.env.SNOWLUMA_TARGET ?? `${process.platform}-${process.arch}`;
+const nativeGlobs = [
+  `snowluma-${targetTriple}.dll`,
+  `snowluma-${targetTriple}.node`,
+  `websocket-${targetTriple}.node`,
+];
+
 const BaseConfigPlugin: PluginOption[] = [
   cp({
     targets: [
@@ -34,7 +43,11 @@ const BaseConfigPlugin: PluginOption[] = [
         dest: distDir,
         flatten: true,
       })),
-      { src: `${nativeSrc}/*`, dest: path.join(distDir, 'native'), flatten: true },
+      ...nativeGlobs.map((g) => ({
+        src: `${nativeSrc}/${g}`,
+        dest: path.join(distDir, 'native'),
+        flatten: true,
+      })),
     ]
   })
 ];

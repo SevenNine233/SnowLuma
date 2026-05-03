@@ -3,19 +3,28 @@ import net from 'node:net';
 import tls from 'node:tls';
 import crypto from 'node:crypto';
 import { URL } from 'node:url';
-import native from './native.js';
+import type { Socket } from 'node:net';
+import native from './native';
 import {
+  type AcceptedPerMessageDeflate,
+  type PerMessageDeflateConfig,
   offerPerMessageDeflate,
   parseAcceptedPerMessageDeflate,
-} from './extensions.js';
-import { WebSocket, CONNECTING, OPEN, isValidCloseCode } from './websocket.js';
+} from './extensions';
+import { WebSocket as InternalWebSocket, CONNECTING, OPEN, CLOSED, isValidCloseCode, type SendCallback, type SendOptions } from './websocket';
 
-function parseHeaders(headerBlock) {
+interface ParsedHandshakeResponse {
+  statusCode: number;
+  statusMessage: string;
+  headers: Record<string, string>;
+}
+
+function parseHeaders(headerBlock: string): ParsedHandshakeResponse {
   const lines = headerBlock.split('\r\n');
-  const status = lines.shift();
+  const status = lines.shift() as string;
   const m = /^HTTP\/1\.1\s+(\d+)\s*(.*)$/.exec(status);
   if (!m) throw new Error('Bad HTTP status line: ' + status);
-  const headers = Object.create(null);
+  const headers: Record<string, string> = Object.create(null);
   for (const line of lines) {
     if (!line) continue;
     const idx = line.indexOf(':');
@@ -24,14 +33,49 @@ function parseHeaders(headerBlock) {
     const v = line.slice(idx + 1).trim();
     headers[k] = v;
   }
-  return { statusCode: Number(m[1]), statusMessage: m[2], headers };
+  return { statusCode: Number(m[1]), statusMessage: m[2] ?? '', headers };
 }
 
-class WebSocketClient extends EventEmitter {
-  constructor(address, protocols, options) {
+export interface WebSocketClientOptions {
+  maxPayload?: number;
+  perMessageDeflate?: boolean | PerMessageDeflateConfig;
+  headers?: Record<string, string>;
+  socketOptions?: net.NetConnectOpts | tls.ConnectionOptions;
+  // Convenience: any TLS option also accepted at top-level (mirrors the `ws` API).
+  [key: string]: unknown;
+}
+
+export class WebSocketClient extends EventEmitter {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  static Server: unknown;
+
+  private readonly _url: URL;
+  private readonly _secure: boolean;
+  private _readyState: number;
+  private readonly _maxPayload: number | undefined;
+  private _ws: InternalWebSocket | null = null;
+  private _pendingQueue: Array<{ data: Parameters<InternalWebSocket['send']>[0]; options?: SendOptions; cb?: SendCallback }> = [];
+  private readonly _perMessageDeflate: boolean | PerMessageDeflateConfig | undefined;
+  private readonly _protocols: string[] | undefined;
+  public protocol = '';
+  public extensions = '';
+
+  private readonly _socket: Socket;
+  private _handshakeBuf: Buffer = Buffer.alloc(0);
+  private _wsKey: string;
+  private _expectedAccept: string;
+
+  constructor(
+    address: string,
+    protocols?: string | string[] | WebSocketClientOptions,
+    options?: WebSocketClientOptions,
+  ) {
     super();
     if (typeof protocols === 'object' && !Array.isArray(protocols) && protocols !== null) {
-      options = protocols;
+      options = protocols as WebSocketClientOptions;
       protocols = undefined;
     }
     options = options || {};
@@ -42,12 +86,8 @@ class WebSocketClient extends EventEmitter {
     this._secure = this._url.protocol === 'wss:';
     this._readyState = CONNECTING;
     this._maxPayload = options.maxPayload;
-    this._ws = null;
-    this._pendingQueue = [];
     this._perMessageDeflate = options.perMessageDeflate;
-    this._protocols = Array.isArray(protocols) ? protocols.map(String) : undefined;
-    this.protocol = '';
-    this.extensions = '';
+    this._protocols = Array.isArray(protocols) ? protocols.map(String) : (typeof protocols === 'string' ? [protocols] : undefined);
 
     const host = this._url.hostname;
     const port = this._url.port ? Number(this._url.port) : (this._secure ? 443 : 80);
@@ -57,11 +97,11 @@ class WebSocketClient extends EventEmitter {
     this._wsKey = keyBytes.toString('base64');
     this._expectedAccept = native.computeAcceptKey(this._wsKey);
 
-    const connectOpts = {
+    const connectOpts: net.NetConnectOpts & tls.ConnectionOptions = {
       host,
       port,
       ...(options.socketOptions || {}),
-    };
+    } as net.NetConnectOpts & tls.ConnectionOptions;
 
     const onConnect = () => {
       const pathAndQuery = (this._url.pathname || '/') + (this._url.search || '');
@@ -76,15 +116,15 @@ class WebSocketClient extends EventEmitter {
         `Sec-WebSocket-Key: ${this._wsKey}`,
         'Sec-WebSocket-Version: 13',
       ];
-      if (Array.isArray(protocols) && protocols.length > 0) {
-        reqLines.push(`Sec-WebSocket-Protocol: ${protocols.join(', ')}`);
+      if (this._protocols && this._protocols.length > 0) {
+        reqLines.push(`Sec-WebSocket-Protocol: ${this._protocols.join(', ')}`);
       }
-      const extensionOffer = offerPerMessageDeflate(options.perMessageDeflate);
+      const extensionOffer = offerPerMessageDeflate(this._perMessageDeflate);
       if (extensionOffer) {
         reqLines.push(`Sec-WebSocket-Extensions: ${extensionOffer}`);
       }
-      if (options.headers) {
-        for (const [k, v] of Object.entries(options.headers)) {
+      if (options!.headers) {
+        for (const [k, v] of Object.entries(options!.headers)) {
           reqLines.push(`${k}: ${v}`);
         }
       }
@@ -92,26 +132,25 @@ class WebSocketClient extends EventEmitter {
       this._socket.write(reqLines.join('\r\n'));
     };
 
-    if (this._secure && connectOpts.servername === undefined && net.isIP(host) === 0) {
-      connectOpts.servername = host;
+    if (this._secure && (connectOpts as tls.ConnectionOptions).servername === undefined && net.isIP(host) === 0) {
+      (connectOpts as tls.ConnectionOptions).servername = host;
     }
 
     this._socket = this._secure
-      ? tls.connect(connectOpts, onConnect)
-      : net.connect(connectOpts, onConnect);
+      ? tls.connect(connectOpts as tls.ConnectionOptions, onConnect)
+      : net.connect(connectOpts as net.NetConnectOpts, onConnect);
 
-    this._socket.setNoDelay && this._socket.setNoDelay(true);
-    this._handshakeBuf = Buffer.alloc(0);
-    this._socket.on('data', (chunk) => this._onHandshakeData(chunk));
-    this._socket.on('error', (err) => this._onEarlyError(err));
+    this._socket.setNoDelay?.(true);
+    this._socket.on('data', (chunk: Buffer) => this._onHandshakeData(chunk));
+    this._socket.on('error', (err: Error) => this._onEarlyError(err));
     this._socket.on('close', () => this._onEarlyClose());
   }
 
-  get readyState() {
+  get readyState(): number {
     return this._ws ? this._ws.readyState : this._readyState;
   }
 
-  _onHandshakeData(chunk) {
+  private _onHandshakeData(chunk: Buffer): void {
     this._handshakeBuf = Buffer.concat([this._handshakeBuf, chunk]);
     const idx = this._handshakeBuf.indexOf('\r\n\r\n');
     if (idx < 0) {
@@ -122,11 +161,11 @@ class WebSocketClient extends EventEmitter {
     }
     const headBlock = this._handshakeBuf.slice(0, idx).toString('latin1');
     const rest = this._handshakeBuf.slice(idx + 4);
-    let parsed;
+    let parsed: ParsedHandshakeResponse;
     try {
       parsed = parseHeaders(headBlock);
     } catch (e) {
-      return this._abort(e.message);
+      return this._abort((e as Error).message);
     }
 
     if (parsed.statusCode !== 101) {
@@ -141,30 +180,29 @@ class WebSocketClient extends EventEmitter {
     if (parsed.headers['sec-websocket-accept'] !== this._expectedAccept) {
       return this._abort('Invalid Sec-WebSocket-Accept');
     }
-    let acceptedExtensions;
+    let acceptedExtensions: AcceptedPerMessageDeflate | null;
     try {
       acceptedExtensions = parseAcceptedPerMessageDeflate(
         parsed.headers['sec-websocket-extensions'],
         this._perMessageDeflate,
       );
     } catch (e) {
-      return this._abort(e.message);
+      return this._abort((e as Error).message);
     }
     if (parsed.headers['sec-websocket-extensions'] && !acceptedExtensions) {
       return this._abort('Unexpected Sec-WebSocket-Extensions');
     }
     const protocol = parsed.headers['sec-websocket-protocol'] || '';
-    if (protocol && (!Array.isArray(this._protocols) || !this._protocols.includes(protocol))) {
+    if (protocol && (!this._protocols || !this._protocols.includes(protocol))) {
       return this._abort('Unexpected Sec-WebSocket-Protocol');
     }
 
-    // Detach handshake listeners; hand the socket off to the WebSocket.
     this._socket.removeAllListeners('data');
     this._socket.removeAllListeners('error');
     this._socket.removeAllListeners('close');
 
     this._readyState = OPEN;
-    this._ws = new WebSocket(this._socket, {
+    this._ws = new InternalWebSocket(this._socket, {
       isServer: false,
       maxPayload: this._maxPayload,
       extensions: acceptedExtensions ? { perMessageDeflate: acceptedExtensions } : undefined,
@@ -173,68 +211,63 @@ class WebSocketClient extends EventEmitter {
     });
     this.protocol = protocol;
     this.extensions = acceptedExtensions ? 'permessage-deflate' : '';
-    // Forward events to the client wrapper.
-    this._ws.on('message', (d, isBinary) => this.emit('message', d, isBinary));
-    this._ws.on('ping', (d) => this.emit('ping', d));
-    this._ws.on('pong', (d) => this.emit('pong', d));
-    this._ws.on('close', (c, r) => this.emit('close', c, r));
-    this._ws.on('error', (e) => this.emit('error', e));
+    this._ws.on('message', (d: Buffer, isBinary: boolean) => this.emit('message', d, isBinary));
+    this._ws.on('ping', (d: Buffer) => this.emit('ping', d));
+    this._ws.on('pong', (d: Buffer) => this.emit('pong', d));
+    this._ws.on('close', (c: number, r: string) => this.emit('close', c, r));
+    this._ws.on('error', (e: Error) => this.emit('error', e));
 
     this.emit('upgrade', parsed);
     this.emit('open');
 
-    // Feed leftover bytes (if any) into the frame parser.
     if (rest.length > 0) this._ws._onData(rest);
 
-    // Flush any queued sends that happened before open.
     for (const entry of this._pendingQueue) this._ws.send(entry.data, entry.options, entry.cb);
     this._pendingQueue = [];
   }
 
-  _onEarlyError(err) {
+  private _onEarlyError(err: Error): void {
     this.emit('error', err);
   }
 
-  _onEarlyClose() {
+  private _onEarlyClose(): void {
     if (!this._ws) {
-      this._readyState = 3;
+      this._readyState = CLOSED;
       this.emit('close', 1006, '');
     }
   }
 
-  _abort(msg) {
+  private _abort(msg: string): void {
     const err = new Error('WebSocket handshake failed: ' + msg);
-    try { this._socket.destroy(); } catch {}
+    try { this._socket.destroy(); } catch { /* noop */ }
     this.emit('error', err);
-    this._readyState = 3;
+    this._readyState = CLOSED;
     this.emit('close', 1006, '');
   }
 
-  send(data, options, cb) {
+  send(data: Parameters<InternalWebSocket['send']>[0], options?: SendOptions | SendCallback, cb?: SendCallback): void {
     if (this._ws) return this._ws.send(data, options, cb);
+    if (typeof options === 'function') { cb = options; options = undefined; }
     this._pendingQueue.push({ data, options, cb });
   }
 
-  ping(data, mask, cb) { if (this._ws) this._ws.ping(data, mask, cb); }
-  pong(data, mask, cb) { if (this._ws) this._ws.pong(data, mask, cb); }
+  ping(data?: Buffer | string | SendCallback, mask?: unknown, cb?: SendCallback): void {
+    this._ws?.ping(data, mask, cb);
+  }
+  pong(data?: Buffer | string | SendCallback, mask?: unknown, cb?: SendCallback): void {
+    this._ws?.pong(data, mask, cb);
+  }
 
-  close(code, reason) {
+  close(code?: number, reason?: string): void {
     if (code !== undefined && !isValidCloseCode(code)) {
       throw new RangeError(`Invalid close code: ${code}`);
     }
     if (this._ws) return this._ws.close(code, reason);
-    try { this._socket.destroy(); } catch {}
+    try { this._socket.destroy(); } catch { /* noop */ }
   }
 
-  terminate() {
+  terminate(): void {
     if (this._ws) return this._ws.terminate();
-    try { this._socket.destroy(); } catch {}
+    try { this._socket.destroy(); } catch { /* noop */ }
   }
 }
-
-WebSocketClient.CONNECTING = 0;
-WebSocketClient.OPEN = 1;
-WebSocketClient.CLOSING = 2;
-WebSocketClient.CLOSED = 3;
-
-export { WebSocketClient };
