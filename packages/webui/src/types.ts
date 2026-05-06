@@ -14,7 +14,7 @@ export interface HookProcessInfo {
   connected: boolean;
   loggedIn: boolean;
   uin: string;
-  status: 'available' | 'loading' | 'loaded' | 'online' | 'error' | 'disconnected';
+  status: 'available' | 'loading' | 'connecting' | 'loaded' | 'online' | 'error' | 'disconnected';
   error: string;
   method: string;
 }

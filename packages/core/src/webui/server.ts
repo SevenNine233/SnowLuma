@@ -436,6 +436,20 @@ export async function initWebUI(
     }
   });
 
+  app.post('/api/processes/:pid/refresh', async (c) => {
+    if (!hookManager) return c.json({ success: false, message: 'hook manager is not available' }, 503);
+    const pid = Number(c.req.param('pid'));
+    if (!Number.isInteger(pid) || pid <= 0 || pid > 4_194_304) {
+      return c.json({ success: false, message: 'invalid pid' }, 400);
+    }
+    try {
+      const processInfo = await hookManager.refreshProcess(pid);
+      return c.json({ success: processInfo.status !== 'error', process: processInfo });
+    } catch (err) {
+      return c.json({ success: false, message: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
   app.get('/api/config/:uin', (c) => {
     const uin = c.req.param('uin');
     if (!UIN_REGEX.test(uin)) return c.json({ message: 'invalid uin' }, 400);
