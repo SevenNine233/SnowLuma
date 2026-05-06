@@ -8,6 +8,7 @@ import { ConfigPage } from '@/components/pages/config-page';
 import { LogsPage } from '@/components/pages/logs-page';
 import { SettingsPage } from '@/components/pages/settings-page';
 import { ChangePasswordPage, type PasswordRule } from '@/components/pages/change-password-page';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import type { Page } from '@/components/layout/sidebar';
 import type { HookProcessInfo, OneBotConfig, QQInfo, SystemInfo } from '@/types';
 
@@ -41,6 +42,7 @@ function AppInner() {
   const [processUnloadingPid, setProcessUnloadingPid] = useState<number | null>(null);
   const [processRefreshingPid, setProcessRefreshingPid] = useState<number | null>(null);
   const [processActionStatus, setProcessActionStatus] = useState('');
+  const [unloadFailedAlert, setUnloadFailedAlert] = useState<{ pid: number; error: string } | null>(null);
   // Tracks PIDs with an in-flight load/unload/refresh request so the UI can
   // collapse spam-clicks instead of firing a second concurrent request.
   const inflightProcessOps = useRef(new Set<number>());
@@ -256,7 +258,15 @@ function AppInner() {
       const res = await fetchApi(`/api/processes/${pid}/unload`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || data.error || '卸载失败');
-      setProcessActionStatus(`已从进程 ${pid} 卸载`);
+      
+      // Check if unload actually failed (pipe still exists)
+      if (data.process?.status === 'connecting' && data.process?.error) {
+        setUnloadFailedAlert({ pid, error: data.process.error });
+        setProcessActionStatus(`进程 ${pid} 卸载失败`);
+      } else {
+        setProcessActionStatus(`已从进程 ${pid} 卸载`);
+      }
+      
       await refreshProcesses();
     } catch (e) {
       setProcessActionStatus(`卸载失败：${(e as Error).message}`);
@@ -376,6 +386,25 @@ function AppInner() {
           {active === 'settings' && <SettingsPage fetchApi={fetchApi} onLogout={handleLogout} />}
         </MainLayout>
       )}
+
+      <ConfirmDialog
+        open={!!unloadFailedAlert}
+        onOpenChange={(open) => !open && setUnloadFailedAlert(null)}
+        title="卸载失败"
+        description={
+          unloadFailedAlert ? (
+            <>
+              <p>进程 {unloadFailedAlert.pid} 的 SnowLuma DLL 卸载失败。</p>
+              <p className="mt-2 text-sm">{unloadFailedAlert.error}</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                系统将继续尝试重新连接该进程。如需彻底卸载，请重启 QQ 进程。
+              </p>
+            </>
+          ) : null
+        }
+        confirmText="知道了"
+        onConfirm={() => setUnloadFailedAlert(null)}
+      />
     </TooltipProvider>
   );
 }
