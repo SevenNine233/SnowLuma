@@ -116,6 +116,8 @@ export function buildApiContext(ref: InstanceRef): ApiActionContext {
       if (!meta || !meta.isGroup) throw new Error('message not found or not a group message');
       await bridge.setGroupReaction(meta.targetId, meta.sequence, emojiId, set);
     },
+    markGroupMsgAsRead: (groupId: number, sequence: number) => bridge.markGroupMsgAsRead(groupId, sequence),
+    markPrivateMsgAsRead: (userId: number, sequence: number) => bridge.markPrivateMsgAsRead(userId, sequence),
   };
 }
 

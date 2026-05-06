@@ -124,9 +124,54 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     return okResponse({ messages });
   });
 
-  h.registerAction('mark_msg_as_read', async () => {
+  h.registerAction('mark_group_msg_as_read', async (params) => {
+    const messageId = asNumber(params.message_id);
+    const groupId = asNumber(params.group_id);
+
+    if (!Number.isInteger(messageId) || messageId === 0) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'message_id is required');
+    }
+    const meta = ctx.getMessageMeta(messageId);
+    if (!meta) return failedResponse(RETCODE.ACTION_FAILED, 'message not found');
+
+    if (!meta || !meta.isGroup) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'message not found or not a group message');
+    }
+
+    if (groupId && groupId !== meta.targetId) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'group_id does not match message session');
+    }
+
+    if (!ctx.markGroupMsgAsRead) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    await ctx.markGroupMsgAsRead(groupId, meta.sequence);
     return okResponse();
   });
+
+  h.registerAction('mark_private_msg_as_read', async (params) => {
+    const messageId = asNumber(params.message_id);
+    const userId = asNumber(params.user_id);
+
+    if (!Number.isInteger(messageId) || messageId === 0) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'message_id is required');
+    }
+    const meta = ctx.getMessageMeta(messageId);
+    if (!meta) return failedResponse(RETCODE.ACTION_FAILED, 'message not found');
+
+    if (!meta || meta.isGroup) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'message not found or not a private message');
+    }
+
+    if (userId && userId !== meta.targetId) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'user_id does not match message session');
+    }
+
+    if (!ctx.markPrivateMsgAsRead) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    await ctx.markPrivateMsgAsRead(userId, meta.sequence);
+    return okResponse();
+  });
+
 
   // --- RKey ---
 
@@ -347,13 +392,6 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     return okResponse();
   });
 
-  h.registerAction('mark_private_msg_as_read', async () => {
-    return okResponse();
-  });
-
-  h.registerAction('mark_group_msg_as_read', async () => {
-    return okResponse();
-  });
 
   h.registerAction('_mark_all_as_read', async () => {
     return okResponse();

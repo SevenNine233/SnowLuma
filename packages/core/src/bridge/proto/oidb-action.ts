@@ -786,3 +786,22 @@ export const OidbGroupFileCountViewReqSchema = {
 export const OidbGroupFileCountViewRespSchema = {
   count: { field: 3, type: 'message' as const, schema: OidbGroupFileCountRespSchema },
 } satisfies ProtoSchema;
+
+
+// --- trpc.msg.msg_svc.MsgService.SsoReadedReport ---
+
+export const GroupReadedReportItemSchema = {
+  groupUin:    { field: 1, type: 'uint64' as const },
+  lastReadSeq: { field: 2, type: 'uint64' as const },
+} satisfies ProtoSchema;
+
+export const C2CReadedReportItemSchema = {
+  uid:          { field: 2, type: 'string' as const },
+  lastReadTime: { field: 3, type: 'uint64' as const },
+  lastReadSeq:  { field: 4, type: 'uint64' as const },
+} satisfies ProtoSchema;
+
+export const SsoReadedReportReqSchema = {
+  groupList: { field: 1, type: 'repeated_message' as const, schema: GroupReadedReportItemSchema },
+  c2cList:   { field: 2, type: 'repeated_message' as const, schema: C2CReadedReportItemSchema },
+} satisfies ProtoSchema;

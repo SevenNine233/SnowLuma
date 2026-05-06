@@ -78,6 +78,8 @@ export interface ApiActionContext {
   setFriendRemark?: (userId: number, remark: string) => Promise<void>;
   getGroupFileCount?: (groupId: number) => Promise<{ fileCount: number; maxCount: number }>;
   setMsgEmojiLike?: (messageId: number, emojiId: string, set: boolean) => Promise<void>;
+  markGroupMsgAsRead?: (groupId: number, sequence: number) => Promise<void>;
+  markPrivateMsgAsRead?: (userId: number, sequence: number) => Promise<void>;
 }
 
 type ActionHandler = (params: JsonObject) => Promise<import('./types').ApiResponse>;

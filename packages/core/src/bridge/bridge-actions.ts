@@ -42,7 +42,7 @@ import {
   NTV2RichMediaReqSchema,
   NTV2RichMediaRespSchema,
   GroupRecallRequestSchema,
-  C2CRecallRequestSchema,
+  C2CRecallRequestSchema, SsoReadedReportReqSchema,
 } from './proto/oidb-action';
 import { FileUploadExtSchema } from './proto/highway';
 import {
@@ -1241,4 +1241,52 @@ export async function recallPrivateMessage(
   }, C2CRecallRequestSchema);
   const result = await bridge.sendRawPacket('trpc.msg.msg_svc.MsgService.SsoC2CRecallMsg', request);
   if (!result.success) throw new Error(result.errorMessage || 'recall private message failed');
+}
+
+// --- Mark message as read ---
+
+export async function markPrivateMessageRead(
+    bridge: Bridge,
+    userId: number,
+    msgSeq: number,
+    timestamp: number = Math.floor(Date.now() / 1000)
+): Promise<void> {
+  const uid = await resolveUserUid(bridge, userId);
+
+  const request = protoEncode({
+    c2cList: [
+      {
+        uid,
+        lastReadTime: BigInt(timestamp),
+        lastReadSeq: BigInt(msgSeq),
+      }
+    ]
+  }, SsoReadedReportReqSchema);
+
+  const result = await bridge.sendRawPacket('trpc.msg.msg_svc.MsgService.SsoReadedReport', request);
+
+  if (!result.success) {
+    throw new Error(result.errorMessage || 'mark private message read failed');
+  }
+}
+
+export async function markGroupMessageRead(
+    bridge: Bridge,
+    groupId: number,
+    msgSeq: number
+): Promise<void> {
+  const request = protoEncode({
+    groupList: [
+      {
+        groupUin: BigInt(groupId),
+        lastReadSeq: BigInt(msgSeq),
+      }
+    ]
+  }, SsoReadedReportReqSchema);
+
+  const result = await bridge.sendRawPacket('trpc.msg.msg_svc.MsgService.SsoReadedReport', request);
+
+  if (!result.success) {
+    throw new Error(result.errorMessage || 'mark group message read failed');
+  }
 }
