@@ -12,6 +12,10 @@ import type { JsonObject, MessageMeta, OneBotConfig } from './types';
 import { HttpTransport } from './http-transport';
 import { HttpPostTransport } from './http-post-transport';
 import { WsTransport } from './ws-transport';
+import { buildDispatchPayload } from './event-filter';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('Event');
 
 export class OneBotInstance {
   readonly uin: string;
@@ -153,12 +157,75 @@ export class OneBotInstance {
 
   private dispatchEvent(event: JsonObject): void {
     this.cacheMessageEvent(event);
-    this.wsTransport.publishEvent(event);
-    this.httpPostTransport.publishEvent(event);
+    this.logReceivedMessage(event);
+    // Produce one canonical event, serialize the two format variants once,
+    // then let each adapter pick its slot at zero allocation cost.
+    const payload = buildDispatchPayload(event);
+    this.wsTransport.publishEvent(event, payload);
+    this.httpPostTransport.publishEvent(event, payload);
+  }
+
+  private logReceivedMessage(event: JsonObject): void {
+    const isSelf = event.post_type === 'message_sent';
+    if (event.post_type !== 'message' && !isSelf) return;
+
+    const messageId = toInt(event.message_id);
+    const isGroup = event.message_type === 'group';
+    
+    // Build message preview
+    const parts: string[] = [];
+    const message = event.message;
+    
+    if (Array.isArray(message)) {
+      for (const seg of message) {
+        if (typeof seg !== 'object' || seg === null || Array.isArray(seg)) continue;
+        const type = String(seg.type ?? '');
+        const data: Record<string, unknown> = (
+          typeof seg.data === 'object' && seg.data !== null && !Array.isArray(seg.data)
+        ) ? seg.data : {};
+
+        if (type === 'text' && data.text) {
+          const text = String(data.text);
+          const preview = text.length > 50 ? text.substring(0, 50) + '...' : text;
+          parts.push(preview);
+        } else if (type === 'image') {
+          parts.push('[图片]');
+        } else if (type === 'face') {
+          parts.push('[表情]');
+        } else if (type === 'at') {
+          parts.push(`@${data.qq || ''}`);
+        } else if (type === 'reply') {
+          parts.push(`[回复:${data.id || ''}]`);
+        } else if (type === 'record') {
+          parts.push('[语音]');
+        } else if (type === 'video') {
+          parts.push('[视频]');
+        } else {
+          parts.push(`[${type}]`);
+        }
+      }
+    }
+    
+    const content = parts.join(' ').trim() || '[空消息]';
+    const idStr = `ID:${messageId}`;
+    const selfTag = isSelf ? '[自身] ' : '';
+    
+    if (isGroup) {
+      const groupId = toInt(event.group_id);
+      const userId = toInt(event.user_id);
+      const sender = event.sender as any;
+      const nickname = sender?.card || sender?.nickname || String(userId);
+      log.success(`${selfTag}群 ${groupId} | ${nickname}(${userId}): ${idStr} ${content}`);
+    } else {
+      const userId = toInt(event.user_id);
+      const sender = event.sender as any;
+      const nickname = sender?.nickname || String(userId);
+      log.success(`${selfTag}私聊 ${nickname}(${userId}): ${idStr} ${content}`);
+    }
   }
 
   private cacheMessageEvent(event: JsonObject): void {
-    if (event.post_type !== 'message') return;
+    if (event.post_type !== 'message' && event.post_type !== 'message_sent') return;
 
     const messageId = toInt(event.message_id);
     if (messageId === 0) return;

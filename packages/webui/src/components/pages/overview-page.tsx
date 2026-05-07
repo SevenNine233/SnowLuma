@@ -5,7 +5,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Cpu,
-  HardDrive,
   Loader2,
   MemoryStick,
   MonitorCog,
@@ -224,28 +223,39 @@ export function OverviewPage({
             </div>
           </div>
 
-          {/* GPU */}
+          {/* Runtime */}
           <div className="rounded-lg border bg-card/40 p-4">
-            <div className="mb-2 flex items-center gap-2">
-              <HardDrive className="size-4 text-primary" />
-              <span className="text-sm font-semibold">显示适配器</span>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Server className="size-4 text-primary" />
+                <span className="text-sm font-semibold">运行进程</span>
+              </div>
+              <span className="text-sm font-semibold tabular-nums text-primary">
+                {systemInfo ? `PID ${systemInfo.runtime.pid}` : '—'}
+              </span>
             </div>
             {!systemInfo ? (
               <div className="space-y-2">
                 <Skeleton className="h-4 w-3/4" />
                 <Skeleton className="h-4 w-1/2" />
               </div>
-            ) : systemInfo.gpus.length === 0 ? (
-              <p className="text-xs text-muted-foreground">未检测到 GPU 信息</p>
             ) : (
-              <ul className="space-y-1.5">
-                {systemInfo.gpus.map((g, i) => (
-                  <li key={i} className="rounded-md bg-background/60 px-2 py-1.5 text-xs">
-                    <div className="truncate font-medium" title={g.name}>{g.name}</div>
-                    {g.vendor && <div className="text-[10px] text-muted-foreground">{g.vendor}</div>}
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between rounded-md bg-background/60 px-2 py-1.5">
+                  <span className="text-muted-foreground">RSS</span>
+                  <span className="font-medium tabular-nums">{formatBytes(systemInfo.runtime.rss)}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-md bg-background/60 px-2 py-1.5">
+                  <span className="text-muted-foreground">堆内存</span>
+                  <span className="font-medium tabular-nums">
+                    {formatBytes(systemInfo.runtime.heapUsed)} / {formatBytes(systemInfo.runtime.heapTotal)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded-md bg-background/60 px-2 py-1.5">
+                  <span className="text-muted-foreground">外部内存</span>
+                  <span className="font-medium tabular-nums">{formatBytes(systemInfo.runtime.external)}</span>
+                </div>
+              </div>
             )}
           </div>
         </CardContent>

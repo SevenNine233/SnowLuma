@@ -204,11 +204,24 @@ export class HookManager {
         log.info('SnowLuma unloaded from PID=%d via unloadModuleManual', pid);
       }
 
+      // Clear injection state first
       state.injected = false;
       state.injectResult = null;
       state.method = '';
       state.uin = '0';
-      state.status = 'available';
+
+      // Verify unload succeeded by checking if pipe still exists
+      const livePipes = await QqHookClient.listLivePipes();
+      if (livePipes.has(pid)) {
+        // Pipe still exists - unload failed, but let watcher handle reconnection
+        state.error = 'DLL卸载失败：命名管道仍然存在，watcher将自动重连';
+        state.status = 'connecting';  // Let watcher pick it up and reconnect
+        log.warn('unload verification failed: PID=%d pipe still exists after unloadModuleManual, watcher will reconnect', pid);
+      } else {
+        // Successfully unloaded
+        state.status = 'available';
+        state.error = '';
+      }
     } catch (error) {
       state.status = 'error';
       state.error = error instanceof Error ? error.message : String(error);
@@ -311,7 +324,7 @@ export class HookManager {
         state.name = proc.name || state.name;
         state.path = proc.path || state.path;
       }
-      // Auto-detect hooks that survived a SnowLuma restart.
+      // Auto-detect hooks that survived a SnowLuma restart or failed unload.
       for (const pid of livePipes) {
         const state = this.ensureState(pid);
         if (!state.injected) {
