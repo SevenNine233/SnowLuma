@@ -276,28 +276,48 @@ export async function initWebUI(
     if (cachedGpu && now - gpuFetchedAt < 60_000) return cachedGpu;
     const platform = os.platform();
     const result: { name: string; vendor: string }[] = [];
+    const unique = new Set<string>();
+    const pushGpu = (name: string, vendor = '') => {
+      const normalizedName = name.trim();
+      const normalizedVendor = vendor.trim();
+      if (!normalizedName) return;
+      if (normalizedName.toLowerCase() === 'name') return;
+      const key = `${normalizedName.toLowerCase()}|${normalizedVendor.toLowerCase()}`;
+      if (unique.has(key)) return;
+      unique.add(key);
+      result.push({ name: normalizedName, vendor: normalizedVendor });
+    };
     try {
       if (platform === 'win32') {
-        const { stdout } = await execAsync('wmic path win32_VideoController get Name /value', {
-          timeout: 4000,
-          windowsHide: true,
-        });
-        for (const line of stdout.split(/\r?\n/)) {
-          const m = line.match(/^Name=(.+)$/);
-          if (m && m[1].trim()) result.push({ name: m[1].trim(), vendor: '' });
+        // Prefer CIM on modern Windows; WMIC is deprecated and may not exist.
+        const commands = [
+          'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"',
+          'wmic path win32_VideoController get Name /value',
+        ];
+        for (const command of commands) {
+          try {
+            const { stdout } = await execAsync(command, { timeout: 5000, windowsHide: true });
+            for (const line of stdout.split(/\r?\n/)) {
+              const value = line.includes('=') ? line.split('=').slice(1).join('=') : line;
+              pushGpu(value);
+            }
+            if (result.length > 0) break;
+          } catch {
+            // Try next fallback command.
+          }
         }
       } else if (platform === 'linux') {
         try {
           const { stdout } = await execAsync('lspci -mm | grep -Ei "vga|3d|display"', { timeout: 4000 });
           for (const line of stdout.split(/\r?\n/)) {
             const parts = line.match(/"([^"]+)"\s+"([^"]+)"\s+"([^"]+)"/);
-            if (parts) result.push({ vendor: parts[2], name: parts[3] });
+            if (parts) pushGpu(parts[3], parts[2]);
           }
         } catch {
           try {
             const { stdout } = await execAsync('nvidia-smi --query-gpu=name --format=csv,noheader', { timeout: 4000 });
             for (const line of stdout.split(/\r?\n/)) {
-              if (line.trim()) result.push({ name: line.trim(), vendor: 'NVIDIA' });
+              pushGpu(line, 'NVIDIA');
             }
           } catch {
             /* ignore */
@@ -309,7 +329,7 @@ export async function initWebUI(
           const json = JSON.parse(stdout);
           const list = json.SPDisplaysDataType ?? [];
           for (const item of list) {
-            if (item._name) result.push({ name: item._name, vendor: item.spdisplays_vendor ?? '' });
+            if (item._name) pushGpu(item._name, item.spdisplays_vendor ?? '');
           }
         } catch {
           /* ignore */
