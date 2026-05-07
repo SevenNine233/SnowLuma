@@ -10,6 +10,8 @@ import { register as registerGroupFile } from './actions/group-file';
 import { register as registerRequest } from './actions/request';
 import { register as registerExtended } from './actions/extended';
 
+import { WebHonorType } from '@/bridge/web/group-honor';
+
 export interface MessageSendResult {
   messageId: number;
   meta?: MessageMeta;
@@ -80,6 +82,8 @@ export interface ApiActionContext {
   setMsgEmojiLike?: (messageId: number, emojiId: string, set: boolean) => Promise<void>;
   markGroupMsgAsRead?: (groupId: number, sequence: number) => Promise<void>;
   markPrivateMsgAsRead?: (userId: number, sequence: number) => Promise<void>;
+  // Web
+  getGroupHonorInfo?: (groupId: number, type: WebHonorType | string) => Promise<any>;
 }
 
 type ActionHandler = (params: JsonObject) => Promise<import('./types').ApiResponse>;

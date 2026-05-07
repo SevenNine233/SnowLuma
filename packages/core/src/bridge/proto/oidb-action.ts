@@ -805,3 +805,33 @@ export const SsoReadedReportReqSchema = {
   groupList: { field: 1, type: 'repeated_message' as const, schema: GroupReadedReportItemSchema },
   c2cList:   { field: 2, type: 'repeated_message' as const, schema: C2CReadedReportItemSchema },
 } satisfies ProtoSchema;
+
+
+// --- 0x102A_1: Get Client Key ---
+
+export const OidbClientKeyReqSchema = {
+} satisfies ProtoSchema;
+
+export const OidbClientKeyRespSchema = {
+  keyIndex:  { field: 2, type: 'uint32' as const },
+  clientKey: { field: 3, type: 'string' as const },
+  expireTime: { field: 4, type: 'uint32' as const },
+} satisfies ProtoSchema;
+
+
+// --- 0x102A_0: Get PSKey ---
+
+export const OidbGetPskeyReqSchema = {
+  domainList: { field: 1, type: 'repeated_string' as const },
+} satisfies ProtoSchema;
+
+export const OidbPskeyItemSchema = {
+  domain:     { field: 1, type: 'string' as const },
+  pskey:      { field: 2, type: 'string' as const },
+  expireTime: { field: 3, type: 'uint64' as const },
+} satisfies ProtoSchema;
+
+export const OidbGetPskeyRespSchema = {
+  pskeyItems: { field: 1, type: 'repeated_message' as const, schema: OidbPskeyItemSchema },
+} satisfies ProtoSchema;
+

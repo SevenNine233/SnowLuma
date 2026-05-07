@@ -8,6 +8,7 @@ import { parseMessage } from './message-parser';
 import { GROUP_MESSAGE_EVENT, PRIVATE_MESSAGE_EVENT, hashMessageIdInt32 } from './message-id';
 import type { JsonObject, JsonValue, MessageMeta } from './types';
 import { createLogger } from '../utils/logger';
+import {WebHonorType} from "@/bridge/web/group-honor";
 
 const log = createLogger('OneBot');
 
@@ -121,6 +122,8 @@ export function buildApiContext(ref: InstanceRef): ApiActionContext {
     },
     markGroupMsgAsRead: (groupId: number, sequence: number) => bridge.markGroupMsgAsRead(groupId, sequence),
     markPrivateMsgAsRead: (userId: number, sequence: number) => bridge.markPrivateMsgAsRead(userId, sequence),
+    // web
+    getGroupHonorInfo: (groupId: number, type: WebHonorType | string)=> bridge.getGroupHonorInfo(groupId, type)
   };
 }
 

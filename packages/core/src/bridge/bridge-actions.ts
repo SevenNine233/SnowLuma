@@ -10,6 +10,8 @@ import { buildSendElems } from './builders/element-builder';
 import { parseMsgPush } from './handlers/msg-push-handler';
 import type { ForwardNodePayload, MessageElement } from './events';
 import { PushMsgSchema } from './proto/message';
+import { RequestUtil } from './web/request-util';
+import { getHonorListWebAPI, WebHonorType } from './web/group-honor';
 import {
   OidbMuteMemberSchema,
   OidbMuteAllSchema,
@@ -42,7 +44,12 @@ import {
   NTV2RichMediaReqSchema,
   NTV2RichMediaRespSchema,
   GroupRecallRequestSchema,
-  C2CRecallRequestSchema, SsoReadedReportReqSchema,
+  C2CRecallRequestSchema,
+  SsoReadedReportReqSchema,
+  OidbClientKeyRespSchema,
+  OidbClientKeyReqSchema,
+  OidbGetPskeyReqSchema,
+  OidbGetPskeyRespSchema
 } from './proto/oidb-action';
 import { FileUploadExtSchema } from './proto/highway';
 import {
@@ -1289,4 +1296,113 @@ export async function markGroupMessageRead(
   if (!result.success) {
     throw new Error(result.errorMessage || 'mark group message read failed');
   }
+}
+
+export async function forceFetchClientKey(bridge: Bridge) {
+  const resp = await sendOidbAndDecode<any>(
+      bridge,
+      'OidbSvcTrpcTcp.0x102a_1',
+      0x102A,
+      1,
+      {},
+      OidbClientKeyReqSchema,
+      OidbClientKeyRespSchema
+  );
+
+  const clientKey = resp?.clientKey || '';
+  const keyIndex = String(resp?.keyIndex || '19'); // 不知道是什么
+
+  return {
+    clientKey,
+    keyIndex,
+    expireTime: String(resp?.expireTime || '1800')
+  };
+}
+
+export async function getPSkey(bridge: Bridge, domainList: string[]) {
+  const resp = await sendOidbAndDecode<any>(
+      bridge,
+      'OidbSvcTrpcTcp.0x102a_0',
+      0x102A,
+      0,
+      { domainList },
+      OidbGetPskeyReqSchema,
+      OidbGetPskeyRespSchema
+  );
+
+  const domainPskeyMap = new Map<string, string>();
+
+  if (resp?.pskeyItems && Array.isArray(resp.pskeyItems)) {
+    for (const item of resp.pskeyItems) {
+      if (item.domain && item.pskey) {
+        domainPskeyMap.set(item.domain, item.pskey);
+      }
+    }
+  }
+
+  return {
+    domainPskeyMap,
+  };
+}
+
+export async function getCookies(bridge: Bridge, domain: string) {
+  const ClientKeyData = await forceFetchClientKey(bridge);
+
+  // 构造 ptlogin2 跳转 URL
+  const requestUrl = 'https://ssl.ptlogin2.qq.com/jump?ptlang=1033&clientuin=' + bridge.qqInfo.uin +
+      '&clientkey=' + ClientKeyData.clientKey +
+      '&u1=https%3A%2F%2F' + domain + '%2F' + bridge.qqInfo.uin + '%2Finfocenter&keyindex=' + ClientKeyData.keyIndex;
+
+  const data = await RequestUtil.HttpsGetCookies(requestUrl);
+
+  if (!data['p_skey'] || data['p_skey'].length === 0) {
+    try {
+      const pskeyData = await getPSkey(bridge, [domain]);
+      const pskey = pskeyData.domainPskeyMap.get(domain);
+      if (pskey) {
+        data['p_skey'] = pskey;
+      }
+    } catch {
+      return data;
+    }
+  }
+
+  return data;
+}
+
+export async function getGroupHonorInfo(bridge: Bridge, groupId: number, type: WebHonorType | string) {
+  const groupCode = groupId.toString();
+  const cookieObject = await getCookies(bridge, 'qun.qq.com');
+
+  const honorInfo: any = {
+    group_id: groupId,
+    current_talkative: null,
+    talkative_list: [],
+    performer_list: [],
+    legend_list: [],
+    emotion_list: [],
+    strong_newbie_list: [],
+  };
+
+  if (type === WebHonorType.TALKATIVE || type === WebHonorType.ALL) {
+    const talkativeList = await getHonorListWebAPI(cookieObject, groupCode, 1);
+    if (talkativeList.length > 0) {
+      honorInfo.current_talkative = talkativeList[0];
+      honorInfo.talkative_list = talkativeList;
+    }
+  }
+
+  if (type === WebHonorType.PERFORMER || type === WebHonorType.ALL) {
+    honorInfo.performer_list = await getHonorListWebAPI(cookieObject, groupCode, 2);
+  }
+
+  if (type === WebHonorType.LEGEND || type === WebHonorType.ALL) {
+    honorInfo.legend_list = await getHonorListWebAPI(cookieObject, groupCode, 3);
+  }
+
+  if (type === WebHonorType.EMOTION || type === WebHonorType.ALL) {
+    honorInfo.emotion_list = await getHonorListWebAPI(cookieObject, groupCode, 6);
+  }
+
+  return honorInfo;
 }

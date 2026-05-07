@@ -26,6 +26,7 @@ import {
   fetchGroupRequests as fetchGroupRequests_,
   fetchDownloadRKeys as fetchDownloadRKeys_,
 } from './bridge-contacts';
+import { WebHonorType } from './web/group-honor';
 import {
   muteGroupMember as muteGroupMember_,
   muteGroupAll as muteGroupAll_,
@@ -64,6 +65,7 @@ import {
   markGroupMessageRead as markPrivateMsgAsRead_,
   setFriendRemark as setFriendRemark_,
   fetchGroupFileCount as fetchGroupFileCount_,
+    getGroupHonorInfo as getGroupHonorInfo_,
 } from './bridge-actions';
 import type { GroupFilesResult } from './bridge-actions';
 import type { MediaIndexNode } from './bridge-actions';
@@ -450,6 +452,9 @@ export class Bridge {
   async markGroupMsgAsRead(groupId: number, sequence: number): Promise<void> { return markGroupMsgAsRead_(this, groupId, sequence); }
   async markPrivateMsgAsRead(userId: number, sequence: number): Promise<void> { return markPrivateMsgAsRead_(this, userId, sequence); }
   async setFriendRemark(userId: number, remark: string): Promise<void> { return setFriendRemark_(this, userId, remark); }
+  async getGroupHonorInfo(groupId: number, type: WebHonorType | string): Promise<any> {
+    return getGroupHonorInfo_(this, groupId, type);
+  }
   async fetchGroupFileCount(groupId: number): Promise<{ fileCount: number; maxCount: number }> { return fetchGroupFileCount_(this, groupId); }
 }
 
