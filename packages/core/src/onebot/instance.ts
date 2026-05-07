@@ -173,24 +173,30 @@ export class OneBotInstance {
     
     if (Array.isArray(message)) {
       for (const seg of message) {
-        if (seg.type === 'text' && seg.data?.text) {
-          const text = String(seg.data.text);
+        if (typeof seg !== 'object' || seg === null || Array.isArray(seg)) continue;
+        const type = String(seg.type ?? '');
+        const data: Record<string, unknown> = (
+          typeof seg.data === 'object' && seg.data !== null && !Array.isArray(seg.data)
+        ) ? seg.data : {};
+
+        if (type === 'text' && data.text) {
+          const text = String(data.text);
           const preview = text.length > 50 ? text.substring(0, 50) + '...' : text;
           parts.push(preview);
-        } else if (seg.type === 'image') {
+        } else if (type === 'image') {
           parts.push('[图片]');
-        } else if (seg.type === 'face') {
+        } else if (type === 'face') {
           parts.push('[表情]');
-        } else if (seg.type === 'at') {
-          parts.push(`@${seg.data?.qq || ''}`);
-        } else if (seg.type === 'reply') {
-          parts.push(`[回复:${seg.data?.id || ''}]`);
-        } else if (seg.type === 'record') {
+        } else if (type === 'at') {
+          parts.push(`@${data.qq || ''}`);
+        } else if (type === 'reply') {
+          parts.push(`[回复:${data.id || ''}]`);
+        } else if (type === 'record') {
           parts.push('[语音]');
-        } else if (seg.type === 'video') {
+        } else if (type === 'video') {
           parts.push('[视频]');
         } else {
-          parts.push(`[${seg.type}]`);
+          parts.push(`[${type}]`);
         }
       }
     }
