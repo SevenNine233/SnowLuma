@@ -81,7 +81,14 @@ export interface SystemInfo {
     used: number;
     usagePercent: number;
   };
-  gpus: { name: string; vendor: string }[];
+  runtime: {
+    pid: number;
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+    arrayBuffers: number;
+  };
 }
 
 export interface LogEntry {

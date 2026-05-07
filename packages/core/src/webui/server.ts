@@ -11,12 +11,8 @@ import path from 'path';
 import { existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { WebuiAuth, evaluatePasswordRules, isStrongPassword } from './auth';
 import { findAvailablePort } from './port';
-
-const execAsync = promisify(exec);
 
 const log = createLogger('WebUI');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -269,87 +265,13 @@ export async function initWebUI(
     return usage;
   }
 
-  let cachedGpu: { name: string; vendor: string }[] | null = null;
-  let gpuFetchedAt = 0;
-  async function detectGpus(): Promise<{ name: string; vendor: string }[]> {
-    const now = Date.now();
-    if (cachedGpu && now - gpuFetchedAt < 60_000) return cachedGpu;
-    const platform = os.platform();
-    const result: { name: string; vendor: string }[] = [];
-    const unique = new Set<string>();
-    const pushGpu = (name: string, vendor = '') => {
-      const normalizedName = name.trim();
-      const normalizedVendor = vendor.trim();
-      if (!normalizedName) return;
-      if (normalizedName.toLowerCase() === 'name') return;
-      const key = `${normalizedName.toLowerCase()}|${normalizedVendor.toLowerCase()}`;
-      if (unique.has(key)) return;
-      unique.add(key);
-      result.push({ name: normalizedName, vendor: normalizedVendor });
-    };
-    try {
-      if (platform === 'win32') {
-        // Prefer CIM on modern Windows; WMIC is deprecated and may not exist.
-        const commands = [
-          'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"',
-          'wmic path win32_VideoController get Name /value',
-        ];
-        for (const command of commands) {
-          try {
-            const { stdout } = await execAsync(command, { timeout: 5000, windowsHide: true });
-            for (const line of stdout.split(/\r?\n/)) {
-              const value = line.includes('=') ? line.split('=').slice(1).join('=') : line;
-              pushGpu(value);
-            }
-            if (result.length > 0) break;
-          } catch {
-            // Try next fallback command.
-          }
-        }
-      } else if (platform === 'linux') {
-        try {
-          const { stdout } = await execAsync('lspci -mm | grep -Ei "vga|3d|display"', { timeout: 4000 });
-          for (const line of stdout.split(/\r?\n/)) {
-            const parts = line.match(/"([^"]+)"\s+"([^"]+)"\s+"([^"]+)"/);
-            if (parts) pushGpu(parts[3], parts[2]);
-          }
-        } catch {
-          try {
-            const { stdout } = await execAsync('nvidia-smi --query-gpu=name --format=csv,noheader', { timeout: 4000 });
-            for (const line of stdout.split(/\r?\n/)) {
-              pushGpu(line, 'NVIDIA');
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-      } else if (platform === 'darwin') {
-        const { stdout } = await execAsync('system_profiler SPDisplaysDataType -json', { timeout: 5000 });
-        try {
-          const json = JSON.parse(stdout);
-          const list = json.SPDisplaysDataType ?? [];
-          for (const item of list) {
-            if (item._name) pushGpu(item._name, item.spdisplays_vendor ?? '');
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-    } catch {
-      /* best-effort */
-    }
-    cachedGpu = result;
-    gpuFetchedAt = now;
-    return result;
-  }
-
-  app.get('/api/system', async (c) => {
+  app.get('/api/system', (c) => {
     const cpus = os.cpus();
     const usage = sampleCpuLoad();
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
-    const gpus = await detectGpus().catch(() => []);
+    const runtimeMemory = process.memoryUsage();
     return c.json({
       hostname: os.hostname(),
       platform: os.platform(),
@@ -372,7 +294,14 @@ export async function initWebUI(
         used: usedMem,
         usagePercent: totalMem ? (usedMem / totalMem) * 100 : 0,
       },
-      gpus,
+      runtime: {
+        pid: process.pid,
+        rss: runtimeMemory.rss,
+        heapTotal: runtimeMemory.heapTotal,
+        heapUsed: runtimeMemory.heapUsed,
+        external: runtimeMemory.external,
+        arrayBuffers: runtimeMemory.arrayBuffers,
+      },
     });
   });
 
