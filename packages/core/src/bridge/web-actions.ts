@@ -260,3 +260,56 @@ export async function getGroupNotice(bridge: Bridge, groupId: number) {
 
   return retNotices;
 }
+
+/**
+ * 提取的公共算法：根据 skey/p_skey 计算 bkn (也就是 token / csrf_token)
+ */
+export function getBknFromSKey(skey: string): number {
+  let hash = 5381;
+  for (let i = 0; i < skey.length; i++) {
+    hash += (hash << 5) + skey.charCodeAt(i);
+  }
+  return hash & 2147483647;
+}
+
+/**
+ * 获取 Cookies (字符串格式)
+ */
+export async function getCookiesStr(bridge: Bridge, domain: string): Promise<string> {
+  const cookieObject = await getCookies(bridge, domain);
+  return Object.entries(cookieObject)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('; ');
+}
+
+/**
+ * 获取 CSRF Token (即 BKN)
+ */
+export async function getCsrfToken(bridge: Bridge): Promise<number> {
+
+  const skey = await getSKey(bridge);
+  if (!skey) {
+    throw new Error('SKey is Empty');
+  }
+  return getBknFromSKey(skey);
+}
+
+/**
+ * 获取凭证 (Cookies 字符串 + Token)
+ */
+export async function getCredentials(bridge: Bridge, domain: string) {
+  const cookieObject = await getCookies(bridge, domain);
+  const cookiesStr = Object.entries(cookieObject)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('; ');
+
+
+  const skey = cookieObject['p_skey'] || cookieObject['skey'] || '';
+  const token = skey ? getBknFromSKey(skey) : 0;
+
+  return {
+    cookies: cookiesStr,
+    token: token,
+    csrf_token: token
+  };
+}

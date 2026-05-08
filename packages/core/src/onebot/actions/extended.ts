@@ -413,18 +413,42 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
 
   // --- Credentials ---
 
-  h.registerAction('get_cookies', async () => {
-    return okResponse({ cookies: '' });
+  h.registerAction('get_cookies', async (params) => {
+    const domain = asString(params.domain) || 'qun.qq.com';
+
+    if (!ctx.getCookiesStr) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    try {
+      const cookies = await ctx.getCookiesStr(domain);
+      return okResponse({ cookies });
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
   h.registerAction('get_csrf_token', async () => {
-    return okResponse({ token: 0 });
+    if (!ctx.getCsrfToken) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    try {
+      const token = await ctx.getCsrfToken();
+      return okResponse({ token });
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
-  h.registerAction('get_credentials', async () => {
-    return okResponse({ cookies: '', csrf_token: 0 });
-  });
+  h.registerAction('get_credentials', async (params) => {
+    const domain = asString(params.domain) || 'qun.qq.com';
 
+    if (!ctx.getCredentials) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    try {
+      const creds = await ctx.getCredentials(domain);
+      return okResponse(creds);
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
+  });
   // --- Utility ---
 
   h.registerAction('set_restart', async () => {

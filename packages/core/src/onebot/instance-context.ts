@@ -132,6 +132,9 @@ export function buildApiContext(ref: InstanceRef): ApiActionContext {
     getGroupEssenceAll: (groupId: number) => bridge.getGroupEssenceAll(groupId),
     sendGroupNotice: (groupId: number, content: string, options?: any) => bridge.sendGroupNotice(groupId, content, options),
     getGroupNotice: (groupId: number) => bridge.getGroupNotice(groupId),
+    getCookiesStr: (domain: string) => bridge.getCookiesStr(domain),
+    getCsrfToken: () => bridge.getCsrfToken(),
+    getCredentials: (domain: string) => bridge.getCredentials(domain),
   };
 }
 

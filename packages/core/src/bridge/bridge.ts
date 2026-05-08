@@ -75,6 +75,9 @@ import {
   getGroupEssenceAll as getGroupEssenceAll_,
   sendGroupNotice as sendGroupNotice_,
   getGroupNotice as getGroupNotice_,
+  getCookiesStr as getCookiesStr_,
+  getCsrfToken as getCsrfToken_,
+  getCredentials as getCredentials_,
 } from './web-actions';
 import type { GroupFilesResult } from './bridge-actions';
 import type { MediaIndexNode } from './bridge-actions';
@@ -496,6 +499,9 @@ export class Bridge {
   async setProfile(nickname?: string, personalNote?: string): Promise<void> {
     return setProfile_(this, nickname, personalNote);
   }
+  async getCookiesStr(domain: string): Promise<string> { return getCookiesStr_(this, domain); }
+  async getCsrfToken(): Promise<number> { return getCsrfToken_(this); }
+  async getCredentials(domain: string) { return getCredentials_(this, domain); }
 
 }
 

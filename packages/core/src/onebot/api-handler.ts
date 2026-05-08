@@ -102,6 +102,9 @@ export interface ApiActionContext {
   getGroupEssenceAll?: (groupId: number) => Promise<GroupEssenceMsgRet[]>;
   sendGroupNotice?: (groupId: number, content: string, options?: any) => Promise<any>;
   getGroupNotice?: (groupId: number) => Promise<any[]>;
+  getCookiesStr?: (domain: string) => Promise<string>;
+  getCsrfToken?: () => Promise<number>;
+  getCredentials?: (domain: string) => Promise<{ cookies: string; token: number; csrf_token: number }>;
 }
 
 type ActionHandler = (params: JsonObject) => Promise<import('./types').ApiResponse>;
