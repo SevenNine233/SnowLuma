@@ -9,5 +9,8 @@ dist/
 .vscode/
 .idea/
 
+/config/
+/data/
+
 # macOS metadata
 .DS_Store

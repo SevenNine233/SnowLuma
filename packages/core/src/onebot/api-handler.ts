@@ -11,6 +11,7 @@ import { register as registerRequest } from './actions/request';
 import { register as registerExtended } from './actions/extended';
 
 import { WebHonorType } from '@/bridge/web/group-honor';
+import {ClientKeyInfo} from "@/bridge/bridge";
 
 export interface MessageSendResult {
   messageId: number;
@@ -64,6 +65,7 @@ export interface ApiActionContext {
   sendGroupPoke?: (groupId: number, userId: number) => Promise<void>;
   setEssenceMsg?: (messageId: number) => Promise<void>;
   deleteEssenceMsg?: (messageId: number) => Promise<void>;
+  forceFetchClientKey? : () => Promise<{clientKey: string, keyIndex: string, expireTime: string}>;
   // New context methods
   setGroupReaction?: (groupId: number, sequence: number, code: string, isSet: boolean) => Promise<void>;
   handleDeleteFriend?: (userId: number, block?: boolean) => Promise<void>;

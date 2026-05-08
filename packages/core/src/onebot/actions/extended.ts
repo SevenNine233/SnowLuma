@@ -172,6 +172,31 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     return okResponse();
   });
 
+  h.registerAction('mark_msg_as_read', async (params) => {
+    const messageId = asNumber(params.message_id);
+    const targetId = asNumber(params.target_id);
+
+    if (!Number.isInteger(messageId) || messageId === 0) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'message_id is required');
+    }
+    const meta = ctx.getMessageMeta(messageId);
+    if (!meta) return failedResponse(RETCODE.ACTION_FAILED, 'message not found');
+
+
+    if (targetId && targetId !== meta.targetId) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'target_id does not match message session');
+    }
+
+    if (!(ctx.markPrivateMsgAsRead && ctx.markGroupMsgAsRead)) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    if (meta.isGroup) {
+      await ctx.markGroupMsgAsRead(targetId, meta.sequence);
+    } else {
+      await ctx.markPrivateMsgAsRead(targetId, meta.sequence);
+    }
+    return okResponse();
+  });
+
 
   // --- RKey ---
 
@@ -542,7 +567,14 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
   });
 
   h.registerAction('get_clientkey', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+    if (!ctx.forceFetchClientKey) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+    }
+    const clientKeyInfo = await ctx.forceFetchClientKey();
+    if (!clientKeyInfo.clientKey) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'get clientkey error');
+    }
+    return okResponse(clientKeyInfo);
   });
 
   h.registerAction('get_mini_app_ark', async () => {

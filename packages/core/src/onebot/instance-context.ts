@@ -112,6 +112,8 @@ export function buildApiContext(ref: InstanceRef): ApiActionContext {
     getForwardMsg: async (resId) => {
       return handleGetForward(ref, resId);
     },
+    forceFetchClientKey: async () => bridge.forceFetchClientKey(),
+
     // Extended NapCat-compatible
     setFriendRemark: (userId, remark) => bridge.setFriendRemark(userId, remark),
     getGroupFileCount: (groupId) => bridge.fetchGroupFileCount(groupId),
