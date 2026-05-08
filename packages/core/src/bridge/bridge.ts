@@ -65,12 +65,14 @@ import {
   markGroupMessageRead as markPrivateMsgAsRead_,
   setFriendRemark as setFriendRemark_,
   fetchGroupFileCount as fetchGroupFileCount_,
+} from './bridge-actions';
+import {
   getGroupHonorInfo as getGroupHonorInfo_,
   forceFetchClientKey as forceFetchClientKey_,
   getGroupEssence as getGroupEssence_,
   getGroupEssenceAll as getGroupEssenceAll_,
   sendGroupNotice as sendGroupNotice_,
-} from './bridge-actions';
+} from './web-actions';
 import type { GroupFilesResult } from './bridge-actions';
 import type { MediaIndexNode } from './bridge-actions';
 

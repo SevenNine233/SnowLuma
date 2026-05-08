@@ -230,20 +230,25 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
 
   // --- Group notice stubs ---
 
-  h.registerAction('send_group_notice', async (params) => {
+  h.registerAction('_send_group_notice', async (params) => {
     const groupId = asNumber(params.group_id);
     const content = asString(params.content);
+    const image = asString(params.image);
 
     if (!groupId || !content) {
       return failedResponse(RETCODE.BAD_REQUEST, 'group_id and content are required');
     }
+
+    if (image) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented: image upload for group notice is not supported yet');
+    }
+
     if (!ctx.sendGroupNotice) {
       return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
     }
 
     try {
       const options = {
-        image: asString(params.image),
         pinned: params.pinned !== undefined ? Number(params.pinned) : 0,
         type: params.type !== undefined ? Number(params.type) : 1,
         confirm_required: params.confirm_required !== undefined ? Number(params.confirm_required) : 1,
