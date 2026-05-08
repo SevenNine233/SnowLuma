@@ -14,7 +14,7 @@ jobs:
     environment: SnowLuma
     steps:
       - name: Dispatch Docker release request
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           RELEASE_REPOSITORY: ${{ vars.DOCKER_RELEASE_REPOSITORY }}
           DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE }}
