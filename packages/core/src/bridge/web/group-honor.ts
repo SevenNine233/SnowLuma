@@ -1,4 +1,4 @@
-import { RequestUtil } from './request-util';
+import { RequestUtil, cookieToString } from './request-util';
 
 export enum WebHonorType {
     TALKATIVE = 'talkative',
@@ -8,12 +8,6 @@ export enum WebHonorType {
     ALL = 'all',
 }
 
-// 将 Cookie 对象转换为字符串的工具函数
-function cookieToString(cookieObject: Record<string, string>): string {
-    return Object.entries(cookieObject)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('; ');
-}
 
 async function fetchHonorData(cookieObject: Record<string, string>, groupCode: string, type: number) {
     let resJson;

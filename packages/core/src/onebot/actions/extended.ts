@@ -230,8 +230,30 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
 
   // --- Group notice stubs ---
 
-  h.registerAction('_send_group_notice', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('send_group_notice', async (params) => {
+    const groupId = asNumber(params.group_id);
+    const content = asString(params.content);
+
+    if (!groupId || !content) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'group_id and content are required');
+    }
+    if (!ctx.sendGroupNotice) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      const options = {
+        image: asString(params.image),
+        pinned: params.pinned !== undefined ? Number(params.pinned) : 0,
+        type: params.type !== undefined ? Number(params.type) : 1,
+        confirm_required: params.confirm_required !== undefined ? Number(params.confirm_required) : 1,
+      };
+
+      await ctx.sendGroupNotice(groupId, content, options);
+      return okResponse();
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
   h.registerAction('_get_group_notice', async () => {

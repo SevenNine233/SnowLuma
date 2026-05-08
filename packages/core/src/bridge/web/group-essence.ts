@@ -1,4 +1,4 @@
-import { RequestUtil } from './request-util';
+import { RequestUtil, cookieToString, getBknFromCookie } from './request-util';
 
 // 定义接口返回类型
 export interface GroupEssenceMsgRet {
@@ -11,21 +11,6 @@ export interface GroupEssenceMsgRet {
     [key: string]: any;
 }
 
-function cookieToString(cookieObject: Record<string, string>): string {
-    return Object.entries(cookieObject)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('; ');
-}
-
-// 获取 QQ Web 接口必需的 bkn (或 gtk) 鉴权参数
-function getBknFromCookie(cookieObject: Record<string, string>): string {
-    const skey = cookieObject['p_skey'] || cookieObject['skey'] || '';
-    let hash = 5381;
-    for (let i = 0; i < skey.length; i++) {
-        hash += (hash << 5) + skey.charCodeAt(i);
-    }
-    return (hash & 2147483647).toString();
-}
 
 /**
  * 分页获取群精华消息

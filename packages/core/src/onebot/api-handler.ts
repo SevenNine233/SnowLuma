@@ -98,6 +98,7 @@ export interface ApiActionContext {
   getGroupHonorInfo?: (groupId: number, type: WebHonorType | string) => Promise<any>;
   getGroupEssence?: (groupId: number, pageStart?: number, pageLimit?: number) => Promise<GroupEssenceMsgRet>;
   getGroupEssenceAll?: (groupId: number) => Promise<GroupEssenceMsgRet[]>;
+  sendGroupNotice?: (groupId: number, content: string, options?: any) => Promise<any>;
 }
 
 type ActionHandler = (params: JsonObject) => Promise<import('./types').ApiResponse>;

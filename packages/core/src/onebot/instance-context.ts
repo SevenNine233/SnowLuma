@@ -128,6 +128,7 @@ export function buildApiContext(ref: InstanceRef): ApiActionContext {
     getGroupHonorInfo: (groupId: number, type: WebHonorType | string)=> bridge.getGroupHonorInfo(groupId, type),
     getGroupEssence: (groupId: number, pageStart: number = 0, pageLimit: number = 50) => bridge.getGroupEssence(groupId, pageStart, pageLimit),
     getGroupEssenceAll: (groupId: number) => bridge.getGroupEssenceAll(groupId),
+    sendGroupNotice: (groupId: number, content: string, options?: any) => bridge.sendGroupNotice(groupId, content, options),
   };
 }
 

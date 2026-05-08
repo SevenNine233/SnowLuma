@@ -109,3 +109,19 @@ export class RequestUtil {
         return this.HttpGetJson<string>(url, method, data, headers, false, false);
     }
 }
+
+export function cookieToString(cookieObject: Record<string, string>): string {
+    return Object.entries(cookieObject)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('; ');
+}
+
+
+export function getBknFromCookie(cookieObject: Record<string, string>): string {
+    const skey = cookieObject['p_skey'] || cookieObject['skey'] || '';
+    let hash = 5381;
+    for (let i = 0; i < skey.length; i++) {
+        hash += (hash << 5) + skey.charCodeAt(i);
+    }
+    return (hash & 2147483647).toString();
+}

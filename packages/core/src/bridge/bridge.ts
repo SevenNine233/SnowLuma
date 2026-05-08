@@ -69,6 +69,7 @@ import {
   forceFetchClientKey as forceFetchClientKey_,
   getGroupEssence as getGroupEssence_,
   getGroupEssenceAll as getGroupEssenceAll_,
+  sendGroupNotice as sendGroupNotice_,
 } from './bridge-actions';
 import type { GroupFilesResult } from './bridge-actions';
 import type { MediaIndexNode } from './bridge-actions';
@@ -472,6 +473,11 @@ export class Bridge {
   async getGroupEssenceAll(groupId: number): Promise<any> {
     return getGroupEssenceAll_(this, groupId);
   }
+
+  async sendGroupNotice(groupId: number, content: string, options?: any) {
+    return sendGroupNotice_(this, groupId, content, options);
+  }
+
   async fetchGroupFileCount(groupId: number): Promise<{ fileCount: number; maxCount: number }> { return fetchGroupFileCount_(this, groupId); }
 }
 

@@ -13,6 +13,7 @@ import { PushMsgSchema } from './proto/message';
 import { RequestUtil } from './web/request-util';
 import { getHonorListWebAPI, WebHonorType } from './web/group-honor';
 import { getGroupEssenceMsg, getGroupEssenceMsgAll } from './web/group-essence';
+import { setGroupNoticeWebAPI } from './web/group-notice'
 import {
   OidbMuteMemberSchema,
   OidbMuteAllSchema,
@@ -1454,4 +1455,51 @@ export async function getGroupEssenceAll(bridge: Bridge, groupId: number) {
   const essenceDataAll = await getGroupEssenceMsgAll(cookieObject, groupCode);
 
   return essenceDataAll;
+}
+
+export async function sendGroupNotice(
+    bridge: Bridge,
+    groupId: number,
+    content: string,
+    options?: {
+      image?: string; // 未来如果要发图片，传路径进来
+      pinned?: number;
+      type?: number;
+      confirm_required?: number;
+    }
+) {
+  const groupCode = groupId.toString();
+  const cookieObject = await getCookies(bridge, 'qun.qq.com');
+
+  let picId = '';
+  let imgWidth = 540;
+  let imgHeight = 300;
+
+  // 📝 预留的图片上传逻辑：
+  // if (options?.image) {
+  //   const picInfo = await bridge.uploadGroupBulletinPic(groupCode, options.image);
+  //   picId = picInfo.id;
+  //   imgWidth = picInfo.width;
+  //   imgHeight = picInfo.height;
+  // }
+
+  const ret = await setGroupNoticeWebAPI(
+      cookieObject,
+      groupCode,
+      content,
+      options?.pinned ?? 0,
+      options?.type ?? 1,
+      1,
+      1,
+      options?.confirm_required ?? 1,
+      picId,
+      imgWidth,
+      imgHeight
+  );
+
+  if (!ret || ret.ec !== 0) {
+    throw new Error(`设置群公告失败: ${ret?.em || '未知错误(Cookie过期或权限不足)'}`);
+  }
+
+  return ret;
 }
