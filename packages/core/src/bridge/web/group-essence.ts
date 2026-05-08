@@ -1,0 +1,81 @@
+import { RequestUtil } from './request-util';
+
+// 定义接口返回类型
+export interface GroupEssenceMsgRet {
+    retcode: number;
+    data: {
+        is_end: boolean;
+        msg_list: any[]; // 具体结构视需要补充
+        [key: string]: any;
+    };
+    [key: string]: any;
+}
+
+function cookieToString(cookieObject: Record<string, string>): string {
+    return Object.entries(cookieObject)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('; ');
+}
+
+// 获取 QQ Web 接口必需的 bkn (或 gtk) 鉴权参数
+function getBknFromCookie(cookieObject: Record<string, string>): string {
+    const skey = cookieObject['p_skey'] || cookieObject['skey'] || '';
+    let hash = 5381;
+    for (let i = 0; i < skey.length; i++) {
+        hash += (hash << 5) + skey.charCodeAt(i);
+    }
+    return (hash & 2147483647).toString();
+}
+
+/**
+ * 分页获取群精华消息
+ */
+export async function getGroupEssenceMsg(
+    cookieObject: Record<string, string>,
+    groupCode: string,
+    pageStart: number = 0,
+    pageLimit: number = 50
+): Promise<GroupEssenceMsgRet | undefined> {
+    const bkn = getBknFromCookie(cookieObject);
+
+    const url = `https://qun.qq.com/cgi-bin/group_digest/digest_list?${new URLSearchParams({
+        bkn: bkn,
+        page_start: pageStart.toString(),
+        page_limit: pageLimit.toString(),
+        group_code: groupCode,
+    }).toString()}`;
+
+    try {
+        const ret = await RequestUtil.HttpGetJson<GroupEssenceMsgRet>(
+            url,
+            'GET',
+            '',
+            { Cookie: cookieToString(cookieObject) }
+        );
+        return ret.retcode === 0 ? ret : undefined;
+    } catch (e) {
+        return undefined;
+    }
+}
+
+/**
+ * 获取所有群精华消息 (最多循环 20 页)
+ */
+export async function getGroupEssenceMsgAll(
+    cookieObject: Record<string, string>,
+    groupCode: string
+): Promise<GroupEssenceMsgRet[]> {
+    const ret: GroupEssenceMsgRet[] = [];
+
+    for (let i = 0; i < 20; i++) {
+        const data = await getGroupEssenceMsg(cookieObject, groupCode, i, 50);
+
+        if (!data) break;
+
+        ret.push(data);
+
+        if (data.data?.is_end) break;
+    }
+
+    return ret;
+}

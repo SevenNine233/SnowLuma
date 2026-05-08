@@ -12,6 +12,7 @@ import type { ForwardNodePayload, MessageElement } from './events';
 import { PushMsgSchema } from './proto/message';
 import { RequestUtil } from './web/request-util';
 import { getHonorListWebAPI, WebHonorType } from './web/group-honor';
+import { getGroupEssenceMsg, getGroupEssenceMsgAll } from './web/group-essence';
 import {
   OidbMuteMemberSchema,
   OidbMuteAllSchema,
@@ -1405,4 +1406,52 @@ export async function getGroupHonorInfo(bridge: Bridge, groupId: number, type: W
   }
 
   return honorInfo;
+}
+
+export async function getSKey(bridge: Bridge): Promise<string> {
+  const ClientKeyData = await forceFetchClientKey(bridge);
+
+  if (!ClientKeyData.clientKey) {
+    throw new Error('getClientKey Error: clientKey is empty');
+  }
+
+  const u1 = encodeURIComponent('https://h5.qzone.qq.com/qqnt/qzoneinpcqq/friend?refresh=0&clientuin=0&darkMode=0');
+  const requestUrl = 'https://ssl.ptlogin2.qq.com/jump?ptlang=1033' +
+      '&clientuin=' + bridge.qqInfo.uin +
+      '&clientkey=' + ClientKeyData.clientKey +
+      '&u1=' + u1 +
+      '&keyindex=' + ClientKeyData.keyIndex;
+
+  const cookies: { [key: string]: string } = await RequestUtil.HttpsGetCookies(requestUrl);
+  const skey = cookies['skey'];
+
+  if (!skey) {
+    throw new Error('SKey is Empty');
+  }
+
+  return skey;
+}
+
+/**
+ * 分页获取群精华消息
+ */
+export async function getGroupEssence(bridge: Bridge, groupId: number, pageStart: number = 0, pageLimit: number = 50) {
+  const groupCode = groupId.toString();
+  const cookieObject = await getCookies(bridge, 'qun.qq.com');
+
+  const essenceData = await getGroupEssenceMsg(cookieObject, groupCode, pageStart, pageLimit);
+
+  return essenceData || { retcode: -1, data: { is_end: true, msg_list: [] } };
+}
+
+/**
+ * 获取所有群精华消息
+ */
+export async function getGroupEssenceAll(bridge: Bridge, groupId: number) {
+  const groupCode = groupId.toString();
+  const cookieObject = await getCookies(bridge, 'qun.qq.com');
+
+  const essenceDataAll = await getGroupEssenceMsgAll(cookieObject, groupCode);
+
+  return essenceDataAll;
 }

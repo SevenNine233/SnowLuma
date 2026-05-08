@@ -11,12 +11,22 @@ import { register as registerRequest } from './actions/request';
 import { register as registerExtended } from './actions/extended';
 
 import { WebHonorType } from '@/bridge/web/group-honor';
-import {ClientKeyInfo} from "@/bridge/bridge";
+// import {ClientKeyInfo} from "@/bridge/bridge";
 
 export interface MessageSendResult {
   messageId: number;
   meta?: MessageMeta;
   echoEvent?: JsonObject;
+}
+
+export interface GroupEssenceMsgRet {
+  retcode: number;
+  data: {
+    is_end: boolean;
+    msg_list: any[];
+    [key: string]: any;
+  };
+  [key: string]: any;
 }
 
 export interface ApiActionContext {
@@ -86,6 +96,8 @@ export interface ApiActionContext {
   markPrivateMsgAsRead?: (userId: number, sequence: number) => Promise<void>;
   // Web
   getGroupHonorInfo?: (groupId: number, type: WebHonorType | string) => Promise<any>;
+  getGroupEssence?: (groupId: number, pageStart?: number, pageLimit?: number) => Promise<GroupEssenceMsgRet>;
+  getGroupEssenceAll?: (groupId: number) => Promise<GroupEssenceMsgRet[]>;
 }
 
 type ActionHandler = (params: JsonObject) => Promise<import('./types').ApiResponse>;

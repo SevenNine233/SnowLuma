@@ -71,9 +71,20 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
   h.registerAction('get_essence_msg_list', async (params) => {
     const groupId = asNumber(params.group_id);
     if (!groupId) return failedResponse(RETCODE.BAD_REQUEST, 'group_id is required');
-    // Essence list fetch requires web ticket/cookie flow not wired yet.
-    // Keep API-compatible output shape for callers.
-    return okResponse([]);
+
+    if (!ctx.getGroupEssenceAll) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      const essenceDataAll = await ctx.getGroupEssenceAll(groupId);
+
+      const allMsgs = essenceDataAll.flatMap(res => res.data?.msg_list || []);
+
+      return okResponse(allMsgs);
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, `获取精华消息失败: ${e}`);
+    }
   });
 
   // --- Reactions ---

@@ -67,6 +67,8 @@ import {
   fetchGroupFileCount as fetchGroupFileCount_,
   getGroupHonorInfo as getGroupHonorInfo_,
   forceFetchClientKey as forceFetchClientKey_,
+  getGroupEssence as getGroupEssence_,
+  getGroupEssenceAll as getGroupEssenceAll_,
 } from './bridge-actions';
 import type { GroupFilesResult } from './bridge-actions';
 import type { MediaIndexNode } from './bridge-actions';
@@ -463,6 +465,13 @@ export class Bridge {
     return getGroupHonorInfo_(this, groupId, type);
   }
   async forceFetchClientKey(): Promise<ClientKeyInfo> { return forceFetchClientKey_(this)}
+  async getGroupEssence(groupId: number, pageStart: number = 0, pageLimit: number = 50): Promise<any> {
+    return getGroupEssence_(this, groupId, pageStart, pageLimit);
+  }
+
+  async getGroupEssenceAll(groupId: number): Promise<any> {
+    return getGroupEssenceAll_(this, groupId);
+  }
   async fetchGroupFileCount(groupId: number): Promise<{ fileCount: number; maxCount: number }> { return fetchGroupFileCount_(this, groupId); }
 }
 
