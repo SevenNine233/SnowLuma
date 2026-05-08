@@ -12,7 +12,7 @@ import {
 import { RequestUtil } from './web/request-util';
 import { getHonorListWebAPI, WebHonorType } from './web/group-honor';
 import { getGroupEssenceMsg, getGroupEssenceMsgAll } from './web/group-essence';
-import { setGroupNoticeWebAPI } from './web/group-notice';
+import { setGroupNoticeWebAPI, getGroupNoticeWebAPI } from './web/group-notice';
 
 export async function forceFetchClientKey(bridge: Bridge) {
   const resp = await sendOidbAndDecode<any>(
@@ -218,4 +218,45 @@ export async function sendGroupNotice(
   }
 
   return ret;
+}
+
+
+export async function getGroupNotice(bridge: Bridge, groupId: number) {
+  const groupCode = groupId.toString();
+  const cookieObject = await getCookies(bridge, 'qun.qq.com');
+
+  const ret = await getGroupNoticeWebAPI(cookieObject, groupCode);
+  if (!ret) {
+    throw new Error('获取公告失败');
+  }
+
+  const retNotices: any[] = [];
+
+  if (ret.feeds) {
+    for (const key in ret.feeds) {
+      const feed = ret.feeds[key];
+      if (!feed) continue;
+
+      const image = feed.msg?.pics?.map((pic) => ({
+        id: pic.id,
+        height: pic.h,
+        width: pic.w,
+      })) || [];
+
+      retNotices.push({
+        notice_id: feed.fid,
+        sender_id: feed.u,
+        publish_time: feed.pubt,
+        message: {
+          text: feed.msg?.text || '',
+          image: image,
+          images: image,
+        },
+        settings: feed.settings,
+        read_num: feed.read_num,
+      });
+    }
+  }
+
+  return retNotices;
 }

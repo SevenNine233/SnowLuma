@@ -6,6 +6,26 @@ export interface SetNoticeRetSuccess {
     [key: string]: any;
 }
 
+export interface WebApiGroupNoticeFeed {
+    fid: string;
+    u: number;
+    pubt: number;
+    msg: {
+        text: string;
+        pics?: Array<{ id: string; w: number; h: number }>;
+    };
+    settings: any;
+    read_num: number;
+    [key: string]: any;
+}
+
+export interface WebApiGroupNoticeRet {
+    ec: number;
+    em?: string;
+    feeds?: Record<string, WebApiGroupNoticeFeed>;
+    [key: string]: any;
+}
+
 
 /**
  * 发送群公告 Web API
@@ -54,6 +74,39 @@ export async function setGroupNoticeWebAPI(
         );
         return ret;
     } catch (e) {
+        return undefined;
+    }
+}
+
+export async function getGroupNoticeWebAPI(
+    cookieObject: Record<string, string>,
+    groupCode: string
+): Promise<WebApiGroupNoticeRet | undefined> {
+    const bkn = getBknFromCookie(cookieObject);
+
+
+    const params = new URLSearchParams({
+        bkn: bkn,
+        qid: groupCode,
+        ft: '23',
+        ni: '1',
+        i: '1',
+        log_read: '1',
+        platform: '1',
+        s: '-1',
+    }).toString();
+
+    const url = `https://web.qun.qq.com/cgi-bin/announce/get_t_list?${params}&n=20`;
+
+    try {
+        const ret = await RequestUtil.HttpGetJson<WebApiGroupNoticeRet>(
+            url,
+            'GET',
+            '',
+            { Cookie: cookieToString(cookieObject) }
+        );
+        return ret?.ec === 0 ? ret : undefined;
+    } catch {
         return undefined;
     }
 }

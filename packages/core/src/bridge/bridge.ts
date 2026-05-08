@@ -72,6 +72,7 @@ import {
   getGroupEssence as getGroupEssence_,
   getGroupEssenceAll as getGroupEssenceAll_,
   sendGroupNotice as sendGroupNotice_,
+  getGroupNotice as getGroupNotice_,
 } from './web-actions';
 import type { GroupFilesResult } from './bridge-actions';
 import type { MediaIndexNode } from './bridge-actions';
@@ -478,6 +479,10 @@ export class Bridge {
 
   async sendGroupNotice(groupId: number, content: string, options?: any) {
     return sendGroupNotice_(this, groupId, content, options);
+  }
+
+  async getGroupNotice(groupId: number) {
+    return getGroupNotice_(this, groupId);
   }
 
   async fetchGroupFileCount(groupId: number): Promise<{ fileCount: number; maxCount: number }> { return fetchGroupFileCount_(this, groupId); }

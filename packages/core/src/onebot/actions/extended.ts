@@ -261,8 +261,20 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     }
   });
 
-  h.registerAction('_get_group_notice', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('_get_group_notice', async (params) => {
+    const groupId = asNumber(params.group_id);
+    if (!groupId) return failedResponse(RETCODE.BAD_REQUEST, 'group_id is required');
+
+    if (!ctx.getGroupNotice) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      const notices = await ctx.getGroupNotice(groupId);
+      return okResponse(notices);
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
   h.registerAction('_del_group_notice', async () => {
