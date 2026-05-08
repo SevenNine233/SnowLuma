@@ -124,6 +124,7 @@ export function buildApiContext(ref: InstanceRef): ApiActionContext {
     },
     markGroupMsgAsRead: (groupId: number, sequence: number) => bridge.markGroupMsgAsRead(groupId, sequence),
     markPrivateMsgAsRead: (userId: number, sequence: number) => bridge.markPrivateMsgAsRead(userId, sequence),
+    setOnlineStatus: (status: number, extStatus?: number, batteryStatus?: number) => bridge.setOnlineStatus(status, extStatus, batteryStatus),
     // web
     getGroupHonorInfo: (groupId: number, type: WebHonorType | string)=> bridge.getGroupHonorInfo(groupId, type),
     getGroupEssence: (groupId: number, pageStart: number = 0, pageLimit: number = 50) => bridge.getGroupEssence(groupId, pageStart, pageLimit),

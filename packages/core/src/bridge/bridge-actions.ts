@@ -44,6 +44,8 @@ import {
   GroupRecallRequestSchema,
   C2CRecallRequestSchema,
   SsoReadedReportReqSchema,
+  SetStatusReqSchema,
+  SetStatusRespSchema,
 } from './proto/oidb-action';
 import { FileUploadExtSchema } from './proto/highway';
 import {
@@ -1289,5 +1291,34 @@ export async function markGroupMessageRead(
 
   if (!result.success) {
     throw new Error(result.errorMessage || 'mark group message read failed');
+  }
+}
+
+export async function setOnlineStatus(
+    bridge: Bridge,
+    status: number,
+    extStatus: number = 0,
+    batteryStatus: number = 100
+): Promise<void> {
+  const request = protoEncode({
+    status,
+    extStatus,
+    batteryStatus,
+  }, SetStatusReqSchema);
+
+  const result = await bridge.sendRawPacket('trpc.qq_new_tech.status_svc.StatusService.SetStatus', request);
+
+  if (!result.success) {
+    throw new Error(result.errorMessage || 'set online status failed (network/timeout)');
+  }
+
+  if (result.responseData && result.responseData.length > 0) {
+    const resp = protoDecode(result.responseData, SetStatusRespSchema);
+    if (!resp) {
+      throw new Error(result.errorMessage || 'set online status failed (network/timeout)');
+    }
+    if (resp.errCode !== undefined && resp.errCode !== 0) {
+      throw new Error(resp.errMsg || `set online status failed with errCode: ${resp.errCode}`);
+    }
   }
 }

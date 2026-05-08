@@ -835,3 +835,14 @@ export const OidbGetPskeyRespSchema = {
   pskeyItems: { field: 1, type: 'repeated_message' as const, schema: OidbPskeyItemSchema },
 } satisfies ProtoSchema;
 
+
+export const SetStatusReqSchema = {
+  status:        { field: 1, type: 'int32' as const },
+  extStatus:     { field: 2, type: 'int32' as const },
+  batteryStatus: { field: 3, type: 'int32' as const },
+} satisfies ProtoSchema;
+
+export const SetStatusRespSchema = {
+  errCode: { field: 1, type: 'int32' as const }, // 盲猜字段 1 是错误码（虽然成功时没下发，默认 0）
+  errMsg:  { field: 2, type: 'string' as const }, // 返回的 "set status success"
+} satisfies ProtoSchema;

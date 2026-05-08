@@ -65,6 +65,7 @@ import {
   markGroupMessageRead as markPrivateMsgAsRead_,
   setFriendRemark as setFriendRemark_,
   fetchGroupFileCount as fetchGroupFileCount_,
+  setOnlineStatus as setOnlineStatus_,
 } from './bridge-actions';
 import {
   getGroupHonorInfo as getGroupHonorInfo_,
@@ -486,6 +487,11 @@ export class Bridge {
   }
 
   async fetchGroupFileCount(groupId: number): Promise<{ fileCount: number; maxCount: number }> { return fetchGroupFileCount_(this, groupId); }
+
+  // extend
+  async setOnlineStatus(status: number, extStatus: number = 0, batteryStatus: number = 100): Promise<void> {
+    return setOnlineStatus_(this, status, extStatus, batteryStatus);
+  }
 }
 
 // --- Module-level helper functions ---

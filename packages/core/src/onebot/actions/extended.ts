@@ -531,8 +531,27 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
   });
 
-  h.registerAction('set_online_status', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('set_online_status', async (params) => {
+    // 按 OneBot/NapCat 习惯提取参数，状态码默认为 11
+    const status = asNumber(params.status);
+    const extStatus = asNumber(params.ext_status) || 0;
+    const batteryStatus = asNumber(params.battery_status) || 100;
+
+    // 参数校验
+    if (status === undefined || status === 0) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'status is required');
+    }
+
+    if (!ctx.setOnlineStatus) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      await ctx.setOnlineStatus(status, extStatus, batteryStatus);
+      return okResponse();
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
   h.registerAction('get_group_ignored_notifies', async () => {
