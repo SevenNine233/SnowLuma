@@ -46,6 +46,7 @@ import {
   SsoReadedReportReqSchema,
   SetStatusReqSchema,
   SetStatusRespSchema,
+  OidbSetProfileSchema,
 } from './proto/oidb-action';
 import { FileUploadExtSchema } from './proto/highway';
 import {
@@ -1321,4 +1322,40 @@ export async function setOnlineStatus(
       throw new Error(resp.errMsg || `set online status failed with errCode: ${resp.errCode}`);
     }
   }
+}
+
+export async function setProfile(
+    bridge: Bridge,
+    nickname?: string,
+    personalNote?: string
+): Promise<void> {
+  const uin = BigInt(bridge.qqInfo.uin);
+  const stringProfiles: any[] = [];
+  const intProfiles: any[] = [];
+
+  if (nickname !== undefined) {
+    stringProfiles.push({ fieldId: 20002, value: nickname });
+  }
+
+  if (personalNote !== undefined) {
+    stringProfiles.push({ fieldId: 102, value: personalNote });
+  }
+
+  if (stringProfiles.length === 0 && intProfiles.length === 0) {
+    return;
+  }
+
+  const req = {
+    uin,
+    stringProfiles,
+  };
+
+  await sendOidbAndCheck(
+      bridge,
+      'OidbSvcTrpcTcp.0x112a_2',
+      0x112A,
+      2,
+      req,
+      OidbSetProfileSchema
+  );
 }

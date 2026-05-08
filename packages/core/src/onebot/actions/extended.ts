@@ -527,8 +527,21 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     return okResponse({ file: pathMod.resolve(filePath) });
   });
 
-  h.registerAction('set_qq_profile', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('set_qq_profile', async (params) => {
+
+    const nickname = params.nickname !== undefined ? asString(params.nickname) : undefined;
+    const personalNote = params.personal_note !== undefined ? asString(params.personal_note) : undefined;
+
+    if (!ctx.setProfile) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      await ctx.setProfile(nickname, personalNote);
+      return okResponse();
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
   h.registerAction('set_online_status', async (params) => {

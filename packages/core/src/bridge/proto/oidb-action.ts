@@ -846,3 +846,20 @@ export const SetStatusRespSchema = {
   errCode: { field: 1, type: 'int32' as const }, // 盲猜字段 1 是错误码（虽然成功时没下发，默认 0）
   errMsg:  { field: 2, type: 'string' as const }, // 返回的 "set status success"
 } satisfies ProtoSchema;
+
+
+export const OidbProfileStringItemSchema = {
+  fieldId: { field: 1, type: 'uint32' as const },
+  value:   { field: 2, type: 'string' as const },
+} satisfies ProtoSchema;
+
+export const OidbProfileIntItemSchema = {
+  fieldId: { field: 1, type: 'uint32' as const },
+  value:   { field: 2, type: 'uint64' as const },
+} satisfies ProtoSchema;
+
+export const OidbSetProfileSchema = {
+  uin:            { field: 1, type: 'uint64' as const },
+  stringProfiles: { field: 2, type: 'repeated_message' as const, schema: OidbProfileStringItemSchema },
+  intProfiles:    { field: 3, type: 'repeated_message' as const, schema: OidbProfileIntItemSchema },
+} satisfies ProtoSchema;

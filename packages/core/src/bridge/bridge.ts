@@ -66,6 +66,7 @@ import {
   setFriendRemark as setFriendRemark_,
   fetchGroupFileCount as fetchGroupFileCount_,
   setOnlineStatus as setOnlineStatus_,
+  setProfile as setProfile_,
 } from './bridge-actions';
 import {
   getGroupHonorInfo as getGroupHonorInfo_,
@@ -492,6 +493,10 @@ export class Bridge {
   async setOnlineStatus(status: number, extStatus: number = 0, batteryStatus: number = 100): Promise<void> {
     return setOnlineStatus_(this, status, extStatus, batteryStatus);
   }
+  async setProfile(nickname?: string, personalNote?: string): Promise<void> {
+    return setProfile_(this, nickname, personalNote);
+  }
+
 }
 
 // --- Module-level helper functions ---

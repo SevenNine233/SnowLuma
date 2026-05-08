@@ -77,6 +77,7 @@ export interface ApiActionContext {
   deleteEssenceMsg?: (messageId: number) => Promise<void>;
   forceFetchClientKey? : () => Promise<{clientKey: string, keyIndex: string, expireTime: string}>;
   setOnlineStatus?: (status: number, extStatus?: number, batteryStatus?: number) => Promise<void>;
+  setProfile?: (nickname?: string, personalNote?: string) => Promise<void>;
   // New context methods
   setGroupReaction?: (groupId: number, sequence: number, code: string, isSet: boolean) => Promise<void>;
   handleDeleteFriend?: (userId: number, block?: boolean) => Promise<void>;
