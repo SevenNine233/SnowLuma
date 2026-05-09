@@ -81,8 +81,7 @@ import {
 } from './web-actions';
 import type { GroupFilesResult } from './bridge-actions';
 import type { MediaIndexNode } from './bridge-actions';
-
-export type BridgeEventCallback = (event: QQEventVariant) => void;
+import { BridgeEventBus } from './event-bus';
 
 type CmdParser = (pkt: PacketInfo, qqInfo: QQInfo) => QQEventVariant[];
 
@@ -116,7 +115,12 @@ export class Bridge {
 
   private qqInfo_: QQInfo;
   private pids_ = new Set<number>();
-  private eventCallback_: BridgeEventCallback | null = null;
+  /**
+   * Per-kind event subscription. Replaces the legacy single-callback
+   * firehose: downstream consumers now register exactly the kinds they
+   * care about and `emitEvent` fans out in parallel.
+   */
+  readonly events = new BridgeEventBus();
   private cmdHandlers_ = new Map<string, CmdParser[]>();
   private packetClient_: PacketSender | null = null;
   private memberRefreshTasks_ = new Map<number, Promise<void>>();
@@ -153,10 +157,6 @@ export class Bridge {
     const arr = this.cmdHandlers_.get(cmd) ?? [];
     arr.push(parser);
     this.cmdHandlers_.set(cmd, arr);
-  }
-
-  setEventCallback(cb: BridgeEventCallback): void {
-    this.eventCallback_ = cb;
   }
 
   handlesCmd(cmd: string): boolean {
@@ -199,11 +199,9 @@ export class Bridge {
   }
 
   private emitEvent(event: QQEventVariant): void {
-    if (this.eventCallback_) {
-      try { this.eventCallback_(event); } catch (e) {
-        log.error('event callback error: %s', e instanceof Error ? (e.stack ?? e.message) : String(e));
-      }
-    }
+    // Fire-and-forget: errors inside subscribers are surfaced via the bus's
+    // own onError hook so one bad listener never blocks the others.
+    void this.events.emit(event);
   }
 
   private triggerMemberCacheRefresh(event: QQEventVariant): void {

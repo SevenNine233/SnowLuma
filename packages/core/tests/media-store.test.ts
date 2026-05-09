@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { MediaCache } from '../src/onebot/media-cache';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import { MediaStore } from '../src/onebot/media-store';
 import { EventConverter } from '../src/onebot/event-converter';
 import type { GroupMessage, FriendMessage, MessageElement } from '../src/bridge/events';
 
@@ -60,10 +62,34 @@ function makeFriendMessage(elements: MessageElement[]): FriendMessage {
   };
 }
 
-describe('MediaCache basic semantics', () => {
+function tempDbPath(label: string): string {
+  return path.join('data', 'test', `media-${label}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+}
+
+describe('MediaStore basic semantics', () => {
+  const dbs: string[] = [];
+
+  beforeEach(() => {
+    dbs.length = 0;
+  });
+
+  afterEach(() => {
+    for (const dbPath of dbs) {
+      for (const ext of ['', '-wal', '-shm']) {
+        try { fs.unlinkSync(dbPath + ext); } catch { /* ignore */ }
+      }
+    }
+  });
+
+  function open(label: string, max?: number): MediaStore {
+    const dbPath = tempDbPath(label);
+    dbs.push(dbPath);
+    return max !== undefined ? new MediaStore(dbPath, max) : new MediaStore(dbPath);
+  }
+
   it('indexes images by file, fileName, and url', () => {
-    const cache = new MediaCache();
-    cache.rememberImage({
+    const store = open('img-keys');
+    store.rememberImage({
       file: 'abc.png',
       url: 'https://example.com/abc.png',
       fileSize: 4242,
@@ -75,15 +101,16 @@ describe('MediaCache basic semantics', () => {
       sessionId: GROUP_ID,
     });
 
-    expect(cache.findImage('abc.png')?.fileSize).toBe(4242);
-    expect(cache.findImage('https://example.com/abc.png')?.url).toBe('https://example.com/abc.png');
-    expect(cache.findImage('missing.png')).toBeNull();
-    expect(cache.findImage('')).toBeNull();
+    expect(store.findImage('abc.png')?.fileSize).toBe(4242);
+    expect(store.findImage('https://example.com/abc.png')?.url).toBe('https://example.com/abc.png');
+    expect(store.findImage('missing.png')).toBeNull();
+    expect(store.findImage('')).toBeNull();
+    store.close();
   });
 
   it('indexes records by file, fileName, fileId, and url', () => {
-    const cache = new MediaCache();
-    cache.rememberRecord({
+    const store = open('rec-keys');
+    store.rememberRecord({
       file: 'silk_test.amr',
       fileId: 'uuid-base64-fake',
       url: 'https://example.com/voice.amr',
@@ -96,15 +123,16 @@ describe('MediaCache basic semantics', () => {
       sessionId: PEER_UIN,
     });
 
-    expect(cache.findRecord('silk_test.amr')?.duration).toBe(3);
-    expect(cache.findRecord('uuid-base64-fake')?.fileId).toBe('uuid-base64-fake');
-    expect(cache.findRecord('https://example.com/voice.amr')?.url).toBe('https://example.com/voice.amr');
-    expect(cache.findRecord('nope')).toBeNull();
+    expect(store.findRecord('silk_test.amr')?.duration).toBe(3);
+    expect(store.findRecord('uuid-base64-fake')?.fileId).toBe('uuid-base64-fake');
+    expect(store.findRecord('https://example.com/voice.amr')?.url).toBe('https://example.com/voice.amr');
+    expect(store.findRecord('nope')).toBeNull();
+    store.close();
   });
 
-  it('updates URLs in place across all index entries', () => {
-    const cache = new MediaCache();
-    cache.rememberRecord({
+  it('updates URLs in place across all alias keys', () => {
+    const store = open('url-update');
+    store.rememberRecord({
       file: 'silk_test.amr',
       fileId: 'uuid-base64-fake',
       url: '',
@@ -116,16 +144,51 @@ describe('MediaCache basic semantics', () => {
       isGroup: false,
       sessionId: PEER_UIN,
     });
-    cache.updateRecordUrl('silk_test.amr', 'https://refreshed.example.com/voice.amr');
-    expect(cache.findRecord('silk_test.amr')?.url).toBe('https://refreshed.example.com/voice.amr');
-    // Lookup by fileId should also see the refreshed url since it shares the entry.
-    expect(cache.findRecord('uuid-base64-fake')?.url).toBe('https://refreshed.example.com/voice.amr');
+    store.updateRecordUrl('silk_test.amr', 'https://refreshed.example.com/voice.amr');
+
+    expect(store.findRecord('silk_test.amr')?.url).toBe('https://refreshed.example.com/voice.amr');
+    expect(store.findRecord('uuid-base64-fake')?.url).toBe('https://refreshed.example.com/voice.amr');
+    store.close();
   });
 
-  it('evicts oldest entries when bound is exceeded', () => {
-    const cache = new MediaCache(33);
-    for (let i = 0; i < 100; i++) {
-      cache.rememberImage({
+  it('survives close+reopen against the same db path', () => {
+    const dbPath = tempDbPath('persist');
+    dbs.push(dbPath);
+
+    {
+      const store = new MediaStore(dbPath);
+      store.rememberImage({
+        file: 'abc.png',
+        url: 'https://example.com/abc.png',
+        fileSize: 99,
+        fileName: 'abc.png',
+        subType: 0,
+        summary: '',
+        imageUrl: 'https://example.com/abc.png',
+        isGroup: true,
+        sessionId: GROUP_ID,
+      });
+      store.close();
+    }
+
+    {
+      const store = new MediaStore(dbPath);
+      const found = store.findImage('abc.png');
+      expect(found).not.toBeNull();
+      expect(found!.fileSize).toBe(99);
+      // Alias index must also persist.
+      expect(store.findImage('https://example.com/abc.png')?.fileSize).toBe(99);
+      store.close();
+    }
+  });
+
+  it('evicts old entries beyond the configured cap', () => {
+    // EVICT_EVERY_N_REMEMBERS = 64 inside the store; we exercise the eviction
+    // path by writing well past the cap so it triggers at least once.
+    const cap = 80;
+    const store = open('evict', cap);
+    for (let i = 0; i < 200; i++) {
+      store.rememberImage({
         file: `file-${i}.png`,
         url: `https://example.com/${i}.png`,
         fileSize: i,
@@ -137,15 +200,26 @@ describe('MediaCache basic semantics', () => {
         sessionId: GROUP_ID,
       });
     }
-    // Earliest entry should have been evicted (each item adds 2 keys: file + url),
-    // so the bound is reached well before 100 distinct entries.
-    expect(cache.findImage('file-0.png')).toBeNull();
-    // Last inserted entry must still be present.
-    expect(cache.findImage('file-99.png')?.fileSize).toBe(99);
+    const { images } = store.size();
+    expect(images).toBeLessThanOrEqual(cap);
+    // Most recent entries should still be present.
+    expect(store.findImage('file-199.png')?.fileSize).toBe(199);
+    store.close();
   });
 });
 
-describe('EventConverter media segment sink', () => {
+describe('EventConverter media segment sink → MediaStore wiring', () => {
+  const dbs: string[] = [];
+
+  afterEach(() => {
+    for (const dbPath of dbs) {
+      for (const ext of ['', '-wal', '-shm']) {
+        try { fs.unlinkSync(dbPath + ext); } catch { /* ignore */ }
+      }
+    }
+    dbs.length = 0;
+  });
+
   it('emits sink invocations for image segments with the right context', async () => {
     const conv = new EventConverter();
     const sinkCalls: Array<{ type: string; isGroup: boolean; sessionId: number; file: string }> = [];
@@ -162,16 +236,19 @@ describe('EventConverter media segment sink', () => {
     ]);
   });
 
-  it('lets the sink populate a MediaCache that get_image-style lookups can use', async () => {
+  it('lets the sink populate a MediaStore that get_image-style lookups can use', async () => {
+    const dbPath = tempDbPath('sink');
+    dbs.push(dbPath);
+
+    const store = new MediaStore(dbPath);
     const conv = new EventConverter();
-    const cache = new MediaCache();
     conv.setImageUrlResolver((element) => element.imageUrl ?? '');
     conv.setMediaUrlResolver(async (element) => element.url ?? '');
     conv.setMediaSegmentSink((type, element, data, isGroup, sessionId) => {
       const url = typeof data.url === 'string' ? data.url : '';
       const file = typeof data.file === 'string' ? data.file : '';
       if (type === 'image') {
-        cache.rememberImage({
+        store.rememberImage({
           file: file || element.fileId || '',
           url,
           fileSize: element.fileSize ?? 0,
@@ -183,7 +260,7 @@ describe('EventConverter media segment sink', () => {
           sessionId,
         });
       } else {
-        cache.rememberRecord({
+        store.rememberRecord({
           file: file || element.fileName || element.fileId || '',
           fileId: element.fileId ?? '',
           url,
@@ -201,22 +278,22 @@ describe('EventConverter media segment sink', () => {
     await conv.convert(SELF_UIN, makeGroupMessage([imageElement()]));
     await conv.convert(SELF_UIN, makeFriendMessage([recordElement()]));
 
-    const img = cache.findImage('abc.png');
+    const img = store.findImage('abc.png');
     expect(img).not.toBeNull();
     expect(img!.url).toBe('https://example.com/abc.png');
     expect(img!.fileSize).toBe(4242);
     expect(img!.isGroup).toBe(true);
     expect(img!.sessionId).toBe(GROUP_ID);
 
-    const rec = cache.findRecord('silk_test.amr');
+    const rec = store.findRecord('silk_test.amr');
     expect(rec).not.toBeNull();
     expect(rec!.fileId).toBe('uuid-base64-fake');
     expect(rec!.duration).toBe(3);
     expect(rec!.isGroup).toBe(false);
     expect(rec!.sessionId).toBe(PEER_UIN);
-    // Should also be findable by the raw fileUuid, mirroring how callers may
-    // pass back any of the identifiers we previously emitted.
-    expect(cache.findRecord('uuid-base64-fake')?.fileName).toBe('silk_test.amr');
+    // Alias lookup by fileUuid still works.
+    expect(store.findRecord('uuid-base64-fake')?.fileName).toBe('silk_test.amr');
+    store.close();
   });
 
   it('does not invoke the sink when no media segments are present', async () => {
