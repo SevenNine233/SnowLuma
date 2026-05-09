@@ -33,7 +33,7 @@ export type NetworkKind = 'httpServers' | 'httpClients' | 'wsServers' | 'wsClien
  * The `name` is a free-form identifier scoped to the adapter's array; it is
  * used for hot-reload bookkeeping and as a label in logs / WebUI.
  */
-interface NetworkBase {
+export interface NetworkBase {
   name: string;
   /** When `false`, the adapter is configured but inactive. Defaults to `true`. */
   enabled?: boolean;

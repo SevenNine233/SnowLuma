@@ -396,9 +396,7 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     if (!file) return failedResponse(RETCODE.BAD_REQUEST, 'file is required');
     if (!ctx.getImageInfo) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
     const info = await ctx.getImageInfo(file);
-    if (info) {
-      return okResponse(info as unknown as import('../types').JsonValue);
-    }
+    if (info) return okResponse(info);
     return failedResponse(RETCODE.ACTION_FAILED, 'image not found in cache');
   });
 
@@ -407,9 +405,7 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     if (!file) return failedResponse(RETCODE.BAD_REQUEST, 'file is required');
     if (!ctx.getRecordInfo) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
     const info = await ctx.getRecordInfo(file);
-    if (info) {
-      return okResponse(info as unknown as import('../types').JsonValue);
-    }
+    if (info) return okResponse(info);
     return failedResponse(RETCODE.ACTION_FAILED, 'record not found in cache');
   });
 
@@ -465,7 +461,7 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     const context = params.context as import('../types').JsonObject | undefined;
     const operation = params.operation as Record<string, unknown> | undefined;
     if (!context || !operation) return failedResponse(RETCODE.BAD_REQUEST, 'context and operation are required');
-    const { executeQuickOperation } = await import('../http-post-transport');
+    const { executeQuickOperation } = await import('../network/quick-operation');
     await executeQuickOperation(context, operation, h);
     return okResponse();
   });
