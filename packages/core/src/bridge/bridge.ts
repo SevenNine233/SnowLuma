@@ -207,10 +207,12 @@ export class Bridge {
   private triggerMemberCacheRefresh(event: QQEventVariant): void {
     let groupId = 0;
     let reason = '';
+    let refreshGroupList = false;
     switch (event.kind) {
       case 'group_member_join':
         groupId = event.groupId;
         reason = 'group_member_join';
+        refreshGroupList = event.userUin === Number(this.qqInfo_.uin);
         break;
       case 'group_member_leave':
         groupId = event.groupId;
@@ -229,10 +231,12 @@ export class Bridge {
 
     const task = (async () => {
       try {
-        if (!this.qqInfo_.findGroup(groupId)) {
+        if (refreshGroupList) {
           try { await this.fetchGroupList(); } catch { /* ignore */ }
         }
-        await this.fetchGroupMemberList(groupId);
+        if (this.qqInfo_.findGroup(groupId)) {
+          await this.fetchGroupMemberList(groupId);
+        }
         log.debug('member cache refreshed: group=%d reason=%s', groupId, reason);
       } catch (e) {
         log.warn('failed to refresh member cache: group=%d reason=%s err=%s',
