@@ -87,6 +87,30 @@ describe('parseMessage', () => {
       expect(result[0].url).toBe('https://example.com/img.png');
     });
 
+    it('parses record segment from data.file', async () => {
+      const result = await parseMessage(
+        [{ type: 'record', data: { file: 'file:///tmp/voice.amr' } }] as any,
+        false,
+      );
+      expect(result).toEqual([{ type: 'record', url: 'file:///tmp/voice.amr' }]);
+    });
+
+    it('parses record segment from data.path (NapCat parity)', async () => {
+      const result = await parseMessage(
+        [{ type: 'record', data: { path: 'C:\\voices\\hi.silk' } }] as any,
+        false,
+      );
+      expect(result).toEqual([{ type: 'record', url: 'C:\\voices\\hi.silk' }]);
+    });
+
+    it('drops record segment with empty source', async () => {
+      const result = await parseMessage(
+        [{ type: 'record', data: {} }] as any,
+        false,
+      );
+      expect(result).toEqual([]);
+    });
+
     it('parses at segment', async () => {
       const result = await parseMessage(
         [{ type: 'at', data: { qq: 12345 } }] as any,
@@ -142,6 +166,24 @@ describe('parseMessage', () => {
         uid: 'u_resolved_uid',
       });
       expect(protoElems[0].text?.str).toBe('@User ');
+    });
+
+    it('skips record send when SendContext is absent (graceful no-bridge path)', async () => {
+      // Without a SendContext, buildSendElems can't run highway upload —
+      // it should warn and drop the element instead of throwing into the
+      // ffmpegAddon (which would explode for callers that don't actually
+      // need to send).
+      const elements = await parseMessage(
+        [
+          { type: 'text', data: { text: 'hi ' } },
+          { type: 'record', data: { file: '/tmp/x.silk' } },
+        ] as any,
+        false,
+      );
+      const protoElems = await buildSendElems(elements);
+      // Only the leading text should make it through.
+      expect(protoElems).toHaveLength(1);
+      expect(protoElems[0].text?.str).toBe('hi ');
     });
 
     it('parses multiple segments', async () => {
