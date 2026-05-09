@@ -26,6 +26,7 @@ import {
   fetchGroupRequests as fetchGroupRequests_,
   fetchDownloadRKeys as fetchDownloadRKeys_,
 } from './bridge-contacts';
+import type { WebHonorType } from './web/group-honor';
 import {
   muteGroupMember as muteGroupMember_,
   muteGroupAll as muteGroupAll_,
@@ -60,9 +61,24 @@ import {
   setGroupReaction as setGroupReaction_,
   recallGroupMessage as recallGroupMessage_,
   recallPrivateMessage as recallPrivateMessage_,
+  markPrivateMessageRead as markGroupMsgAsRead_,
+  markGroupMessageRead as markPrivateMsgAsRead_,
   setFriendRemark as setFriendRemark_,
   fetchGroupFileCount as fetchGroupFileCount_,
+  setOnlineStatus as setOnlineStatus_,
+  setProfile as setProfile_,
 } from './bridge-actions';
+import {
+  getGroupHonorInfo as getGroupHonorInfo_,
+  forceFetchClientKey as forceFetchClientKey_,
+  getGroupEssence as getGroupEssence_,
+  getGroupEssenceAll as getGroupEssenceAll_,
+  sendGroupNotice as sendGroupNotice_,
+  getGroupNotice as getGroupNotice_,
+  getCookiesStr as getCookiesStr_,
+  getCsrfToken as getCsrfToken_,
+  getCredentials as getCredentials_,
+} from './web-actions';
 import type { GroupFilesResult } from './bridge-actions';
 import type { MediaIndexNode } from './bridge-actions';
 
@@ -84,6 +100,12 @@ export interface DownloadRKeyInfo {
   storeId: number;
   createTime: number;
   type: number;
+}
+
+export interface ClientKeyInfo {
+  clientKey: string;
+  expireTime: string;
+  keyIndex: string
 }
 
 const log = createLogger('Bridge');
@@ -445,8 +467,42 @@ export class Bridge {
   async setGroupReaction(groupId: number, sequence: number, code: string, isSet: boolean): Promise<void> { return setGroupReaction_(this, groupId, sequence, code, isSet); }
   async recallGroupMessage(groupId: number, sequence: number): Promise<void> { return recallGroupMessage_(this, groupId, sequence); }
   async recallPrivateMessage(userUin: number, clientSeq: number, msgSeq: number, random: number, timestamp: number): Promise<void> { return recallPrivateMessage_(this, userUin, clientSeq, msgSeq, random, timestamp); }
+  async markGroupMsgAsRead(groupId: number, sequence: number): Promise<void> { return markGroupMsgAsRead_(this, groupId, sequence); }
+  async markPrivateMsgAsRead(userId: number, sequence: number): Promise<void> { return markPrivateMsgAsRead_(this, userId, sequence); }
   async setFriendRemark(userId: number, remark: string): Promise<void> { return setFriendRemark_(this, userId, remark); }
+  async getGroupHonorInfo(groupId: number, type: WebHonorType | string): Promise<any> {
+    return getGroupHonorInfo_(this, groupId, type);
+  }
+  async forceFetchClientKey(): Promise<ClientKeyInfo> { return forceFetchClientKey_(this)}
+  async getGroupEssence(groupId: number, pageStart: number = 0, pageLimit: number = 50): Promise<any> {
+    return getGroupEssence_(this, groupId, pageStart, pageLimit);
+  }
+
+  async getGroupEssenceAll(groupId: number): Promise<any> {
+    return getGroupEssenceAll_(this, groupId);
+  }
+
+  async sendGroupNotice(groupId: number, content: string, options?: any) {
+    return sendGroupNotice_(this, groupId, content, options);
+  }
+
+  async getGroupNotice(groupId: number) {
+    return getGroupNotice_(this, groupId);
+  }
+
   async fetchGroupFileCount(groupId: number): Promise<{ fileCount: number; maxCount: number }> { return fetchGroupFileCount_(this, groupId); }
+
+  // extend
+  async setOnlineStatus(status: number, extStatus: number = 0, batteryStatus: number = 100): Promise<void> {
+    return setOnlineStatus_(this, status, extStatus, batteryStatus);
+  }
+  async setProfile(nickname?: string, personalNote?: string): Promise<void> {
+    return setProfile_(this, nickname, personalNote);
+  }
+  async getCookiesStr(domain: string): Promise<string> { return getCookiesStr_(this, domain); }
+  async getCsrfToken(): Promise<number> { return getCsrfToken_(this); }
+  async getCredentials(domain: string) { return getCredentials_(this, domain); }
+
 }
 
 // --- Module-level helper functions ---

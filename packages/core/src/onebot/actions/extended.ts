@@ -71,9 +71,20 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
   h.registerAction('get_essence_msg_list', async (params) => {
     const groupId = asNumber(params.group_id);
     if (!groupId) return failedResponse(RETCODE.BAD_REQUEST, 'group_id is required');
-    // Essence list fetch requires web ticket/cookie flow not wired yet.
-    // Keep API-compatible output shape for callers.
-    return okResponse([]);
+
+    if (!ctx.getGroupEssenceAll) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      const essenceDataAll = await ctx.getGroupEssenceAll(groupId);
+
+      const allMsgs = essenceDataAll.flatMap(res => res.data?.msg_list || []);
+
+      return okResponse(allMsgs);
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, `获取精华消息失败: ${e}`);
+    }
   });
 
   // --- Reactions ---
@@ -124,9 +135,79 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     return okResponse({ messages });
   });
 
-  h.registerAction('mark_msg_as_read', async () => {
+  h.registerAction('mark_group_msg_as_read', async (params) => {
+    const messageId = asNumber(params.message_id);
+    const groupId = asNumber(params.group_id);
+
+    if (!Number.isInteger(messageId) || messageId === 0) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'message_id is required');
+    }
+    const meta = ctx.getMessageMeta(messageId);
+    if (!meta) return failedResponse(RETCODE.ACTION_FAILED, 'message not found');
+
+    if (!meta || !meta.isGroup) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'message not found or not a group message');
+    }
+
+    if (groupId && groupId !== meta.targetId) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'group_id does not match message session');
+    }
+
+    if (!ctx.markGroupMsgAsRead) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    await ctx.markGroupMsgAsRead(groupId, meta.sequence);
     return okResponse();
   });
+
+  h.registerAction('mark_private_msg_as_read', async (params) => {
+    const messageId = asNumber(params.message_id);
+    const userId = asNumber(params.user_id);
+
+    if (!Number.isInteger(messageId) || messageId === 0) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'message_id is required');
+    }
+    const meta = ctx.getMessageMeta(messageId);
+    if (!meta) return failedResponse(RETCODE.ACTION_FAILED, 'message not found');
+
+    if (!meta || meta.isGroup) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'message not found or not a private message');
+    }
+
+    if (userId && userId !== meta.targetId) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'user_id does not match message session');
+    }
+
+    if (!ctx.markPrivateMsgAsRead) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    await ctx.markPrivateMsgAsRead(userId, meta.sequence);
+    return okResponse();
+  });
+
+  h.registerAction('mark_msg_as_read', async (params) => {
+    const messageId = asNumber(params.message_id);
+    const targetId = asNumber(params.target_id);
+
+    if (!Number.isInteger(messageId) || messageId === 0) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'message_id is required');
+    }
+    const meta = ctx.getMessageMeta(messageId);
+    if (!meta) return failedResponse(RETCODE.ACTION_FAILED, 'message not found');
+
+
+    if (targetId && targetId !== meta.targetId) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'target_id does not match message session');
+    }
+
+    if (!(ctx.markPrivateMsgAsRead && ctx.markGroupMsgAsRead)) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    if (meta.isGroup) {
+      await ctx.markGroupMsgAsRead(targetId, meta.sequence);
+    } else {
+      await ctx.markPrivateMsgAsRead(targetId, meta.sequence);
+    }
+    return okResponse();
+  });
+
 
   // --- RKey ---
 
@@ -149,12 +230,51 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
 
   // --- Group notice stubs ---
 
-  h.registerAction('_send_group_notice', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('_send_group_notice', async (params) => {
+    const groupId = asNumber(params.group_id);
+    const content = asString(params.content);
+    const image = asString(params.image);
+
+    if (!groupId || !content) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'group_id and content are required');
+    }
+
+    if (image) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented: image upload for group notice is not supported yet');
+    }
+
+    if (!ctx.sendGroupNotice) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      const options = {
+        pinned: params.pinned !== undefined ? Number(params.pinned) : 0,
+        type: params.type !== undefined ? Number(params.type) : 1,
+        confirm_required: params.confirm_required !== undefined ? Number(params.confirm_required) : 1,
+      };
+
+      await ctx.sendGroupNotice(groupId, content, options);
+      return okResponse();
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
-  h.registerAction('_get_group_notice', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('_get_group_notice', async (params) => {
+    const groupId = asNumber(params.group_id);
+    if (!groupId) return failedResponse(RETCODE.BAD_REQUEST, 'group_id is required');
+
+    if (!ctx.getGroupNotice) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      const notices = await ctx.getGroupNotice(groupId);
+      return okResponse(notices);
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
   h.registerAction('_del_group_notice', async () => {
@@ -293,18 +413,42 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
 
   // --- Credentials ---
 
-  h.registerAction('get_cookies', async () => {
-    return okResponse({ cookies: '' });
+  h.registerAction('get_cookies', async (params) => {
+    const domain = asString(params.domain) || 'qun.qq.com';
+
+    if (!ctx.getCookiesStr) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    try {
+      const cookies = await ctx.getCookiesStr(domain);
+      return okResponse({ cookies });
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
   h.registerAction('get_csrf_token', async () => {
-    return okResponse({ token: 0 });
+    if (!ctx.getCsrfToken) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    try {
+      const token = await ctx.getCsrfToken();
+      return okResponse({ token });
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
-  h.registerAction('get_credentials', async () => {
-    return okResponse({ cookies: '', csrf_token: 0 });
-  });
+  h.registerAction('get_credentials', async (params) => {
+    const domain = asString(params.domain) || 'qun.qq.com';
 
+    if (!ctx.getCredentials) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+
+    try {
+      const creds = await ctx.getCredentials(domain);
+      return okResponse(creds);
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
+  });
   // --- Utility ---
 
   h.registerAction('set_restart', async () => {
@@ -347,13 +491,6 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     return okResponse();
   });
 
-  h.registerAction('mark_private_msg_as_read', async () => {
-    return okResponse();
-  });
-
-  h.registerAction('mark_group_msg_as_read', async () => {
-    return okResponse();
-  });
 
   h.registerAction('_mark_all_as_read', async () => {
     return okResponse();
@@ -414,12 +551,44 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     return okResponse({ file: pathMod.resolve(filePath) });
   });
 
-  h.registerAction('set_qq_profile', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('set_qq_profile', async (params) => {
+
+    const nickname = params.nickname !== undefined ? asString(params.nickname) : undefined;
+    const personalNote = params.personal_note !== undefined ? asString(params.personal_note) : undefined;
+
+    if (!ctx.setProfile) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      await ctx.setProfile(nickname, personalNote);
+      return okResponse();
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
-  h.registerAction('set_online_status', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('set_online_status', async (params) => {
+    // 按 OneBot/NapCat 习惯提取参数，状态码默认为 11
+    const status = asNumber(params.status);
+    const extStatus = asNumber(params.ext_status) || 0;
+    const batteryStatus = asNumber(params.battery_status) || 100;
+
+    // 参数校验
+    if (status === undefined || status === 0) {
+      return failedResponse(RETCODE.BAD_REQUEST, 'status is required');
+    }
+
+    if (!ctx.setOnlineStatus) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    }
+
+    try {
+      await ctx.setOnlineStatus(status, extStatus, batteryStatus);
+      return okResponse();
+    } catch (e) {
+      return failedResponse(RETCODE.ACTION_FAILED, String(e));
+    }
   });
 
   h.registerAction('get_group_ignored_notifies', async () => {
@@ -504,7 +673,14 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
   });
 
   h.registerAction('get_clientkey', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+    if (!ctx.forceFetchClientKey) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+    }
+    const clientKeyInfo = await ctx.forceFetchClientKey();
+    if (!clientKeyInfo.clientKey) {
+      return failedResponse(RETCODE.ACTION_FAILED, 'get clientkey error');
+    }
+    return okResponse(clientKeyInfo);
   });
 
   h.registerAction('get_mini_app_ark', async () => {

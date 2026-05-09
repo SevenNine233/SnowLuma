@@ -8,6 +8,7 @@ import { parseMessage } from './message-parser';
 import { GROUP_MESSAGE_EVENT, PRIVATE_MESSAGE_EVENT, hashMessageIdInt32 } from './message-id';
 import type { JsonObject, JsonValue, MessageMeta } from './types';
 import { createLogger } from '../utils/logger';
+import {WebHonorType} from "@/bridge/web/group-honor";
 
 const log = createLogger('OneBot');
 
@@ -111,6 +112,8 @@ export function buildApiContext(ref: InstanceRef): ApiActionContext {
     getForwardMsg: async (resId) => {
       return handleGetForward(ref, resId);
     },
+    forceFetchClientKey: async () => bridge.forceFetchClientKey(),
+
     // Extended NapCat-compatible
     setFriendRemark: (userId, remark) => bridge.setFriendRemark(userId, remark),
     getGroupFileCount: (groupId) => bridge.fetchGroupFileCount(groupId),
@@ -119,6 +122,19 @@ export function buildApiContext(ref: InstanceRef): ApiActionContext {
       if (!meta || !meta.isGroup) throw new Error('message not found or not a group message');
       await bridge.setGroupReaction(meta.targetId, meta.sequence, emojiId, set);
     },
+    markGroupMsgAsRead: (groupId: number, sequence: number) => bridge.markGroupMsgAsRead(groupId, sequence),
+    markPrivateMsgAsRead: (userId: number, sequence: number) => bridge.markPrivateMsgAsRead(userId, sequence),
+    setOnlineStatus: (status: number, extStatus?: number, batteryStatus?: number) => bridge.setOnlineStatus(status, extStatus, batteryStatus),
+    setProfile: (nickname?: string, personalNote?: string) => bridge.setProfile(nickname, personalNote),
+    // web
+    getGroupHonorInfo: (groupId: number, type: WebHonorType | string)=> bridge.getGroupHonorInfo(groupId, type),
+    getGroupEssence: (groupId: number, pageStart: number = 0, pageLimit: number = 50) => bridge.getGroupEssence(groupId, pageStart, pageLimit),
+    getGroupEssenceAll: (groupId: number) => bridge.getGroupEssenceAll(groupId),
+    sendGroupNotice: (groupId: number, content: string, options?: any) => bridge.sendGroupNotice(groupId, content, options),
+    getGroupNotice: (groupId: number) => bridge.getGroupNotice(groupId),
+    getCookiesStr: (domain: string) => bridge.getCookiesStr(domain),
+    getCsrfToken: () => bridge.getCsrfToken(),
+    getCredentials: (domain: string) => bridge.getCredentials(domain),
   };
 }
 
