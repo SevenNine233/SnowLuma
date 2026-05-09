@@ -165,13 +165,12 @@ export class HookManager {
         const livePipes = await QqHookClient.listLivePipes();
         if (livePipes.has(pid)) {
           state.injected = true;
-          state.method = 'reconnect';
+          state.method = state.method || 'reconnect';
           log.info('PID=%d already has SnowLuma pipe; will reconnect via watcher', pid);
         } else {
           state.injectResult = injectHookProcess(pid);
           state.injected = true;
           state.method = state.injectResult.method;
-          log.info('SnowLuma loaded into PID=%d via %s', pid, state.method);
         }
       }
       state.status = state.connected
