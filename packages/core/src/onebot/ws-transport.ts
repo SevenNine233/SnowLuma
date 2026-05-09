@@ -193,14 +193,14 @@ export class WsTransport {
     const dispatch = payload ?? buildDispatchPayload(event);
 
     for (const conn of this.forwardConnections.values()) {
-      if (conn.role !== 'event' && conn.role !== 'universal') continue;
+      if (conn.role !== 'Event' && conn.role !== 'Universal') continue;
       const json = pickDispatchJson(dispatch, conn.options);
       if (json === null) continue;
       safeSend(conn.socket, json);
     }
 
     for (const conn of this.reverseConnections.values()) {
-      if (conn.role !== 'event' && conn.role !== 'universal') continue;
+      if (conn.role !== 'Event' && conn.role !== 'Universal') continue;
       const json = pickDispatchJson(dispatch, conn.options);
       if (json === null) continue;
       safeSend(conn.socket, json);
@@ -267,9 +267,9 @@ export class WsTransport {
     if (this.reverseConnections.has(name) || this.reconnectTimers.has(name)) return;
 
     const network = state.network;
-    const role = network.role ?? 'universal';
+    const role = network.role ?? 'Universal';
     const headers: Record<string, string> = {
-      'User-Agent': 'OneBot',
+      'User-Agent': 'OneBot/11',
       'X-Self-ID': this.context.uin,
       'X-Client-Role': role,
     };
@@ -316,7 +316,7 @@ export class WsTransport {
   }
 
   private async handleApiMessage(socket: WebSocket, role: WsRole, raw: Buffer | string): Promise<void> {
-    if (role !== 'api' && role !== 'universal') return;
+    if (role !== 'Api' && role !== 'Universal') return;
 
     const text = rawDataToString(raw);
     if (!text) return;
@@ -326,7 +326,7 @@ export class WsTransport {
   }
 
   private sendBootstrapMetaEvents(socket: WebSocket, role: WsRole, options: EventReportOptions): void {
-    if (role !== 'event' && role !== 'universal') return;
+    if (role !== 'Event' && role !== 'Universal') return;
 
     const events = [
       this.context.buildLifecycleEvent('connect'),
@@ -343,9 +343,9 @@ export class WsTransport {
 
 function classifyForwardRole(request: IncomingMessage): WsRole {
   const path = parseRequestPath(request.url ?? '/');
-  if (path.endsWith('/api')) return 'api';
-  if (path.endsWith('/event')) return 'event';
-  return 'universal';
+  if (path.endsWith('/api')) return 'Api';
+  if (path.endsWith('/event')) return 'Event';
+  return 'Universal';
 }
 
 function parseRequestPath(urlValue: string): string {
@@ -375,7 +375,7 @@ function wsServerSignature(network: WsServerNetwork): string {
 }
 
 function wsClientSignature(network: WsClientNetwork): string {
-  const role = network.role ?? 'universal';
+  const role = network.role ?? 'Universal';
   const reconnectIntervalMs = Math.max(1000, network.reconnectIntervalMs ?? 5000);
   return `${network.url}#${role}#${reconnectIntervalMs}#${network.accessToken ?? ''}`;
 }
@@ -393,7 +393,7 @@ function isAuthorized(request: IncomingMessage, token: string): boolean {
     if (url.searchParams.get('access_token') === token) {
       return true;
     }
-  } catch {}
+  } catch { }
 
   return false;
 }

@@ -19,7 +19,7 @@ export interface OneBotRequest {
   echo?: JsonValue;
 }
 
-export type WsRole = 'api' | 'event' | 'universal';
+export type WsRole = 'Api' | 'Event' | 'Universal';
 
 export type MessageFormat = 'array' | 'string';
 
