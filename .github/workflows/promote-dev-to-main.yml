@@ -1,40 +1,4 @@
 name: Promote Dev to Main
-
-# Opens (or refreshes) a Pull Request that promotes the `dev` branch into
-# `main`, authored by the SnowLuma Bot GitHub App.
-#
-# Triggers
-#   1. push to `dev` whose head commit message starts with `[merge]` or
-#      `chore(release):` (case-insensitive prefix match).
-#   2. push of any `chore.*` tag (e.g. `chore.merge-20240509`,
-#      `chore.promote-v1.7.0`). Intentionally distinct from the `v*` release
-#      tags consumed by `release.yml`, so promote-to-main and release-build
-#      are decoupled.
-#   3. manual `workflow_dispatch` from the Actions tab.
-#
-# Every trigger opens or refreshes a single PR `dev -> main` and requests
-# `gh pr merge --auto`. Auto-merge waits for **every required status check**
-# configured on the `main` branch protection rule (typecheck + build matrix
-# from `dev-build.yml`, plus any other check you mark as required) to pass
-# before merging.
-#
-# Required secrets (re-uses the App that already opens nnphook native PRs):
-#   - SNOWLUMA_BOT_APP_ID
-#   - SNOWLUMA_BOT_PRIVATE_KEY
-#
-# The GitHub App must be installed on SnowLuma/SnowLuma with:
-#   - Contents:      Read+Write
-#   - Pull requests: Read+Write
-#
-# Branch protection on `main` should:
-#   - Require a pull request before merging.
-#   - Require status checks to pass before merging, with all dev-build /
-#     typecheck jobs marked as required.
-#   - Block force pushes and direct pushes (no user/team push allowance).
-#   - Add the SnowLuma Bot App to the bypass list so `gh pr merge --auto`
-#     can complete the merge once required checks are green; without bypass
-#     the PR will sit in auto-merge until a human approver intervenes.
-
 on:
   push:
     branches: [dev]
