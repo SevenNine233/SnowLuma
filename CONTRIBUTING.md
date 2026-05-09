@@ -37,7 +37,7 @@ SnowLuma 使用 **`main` + `dev`** 双分支模型：
 打开仓库 Actions 页面 → `Promote Dev to Main` → `Run workflow`。可选输入：
 
 - `auto_merge`：是否启用 auto-merge（默认 `true`）。
-- `merge_method`：`merge` / `squash` / `rebase`（默认 `merge`）。
+- `merge_method`：`squash` / `merge` / `rebase`（默认 `squash`，把 `dev` 上的多个增量提交压成一个再合入 `main`，保持 `main` 历史线性）。
 
 工作流会按照当前 `dev` 与 `main` 的差异开 / 更新 PR。
 
