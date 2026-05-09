@@ -4,11 +4,19 @@ name: Promote Dev to Main
 # `main`, authored by the SnowLuma Bot GitHub App.
 #
 # Triggers
-#   1. push to `dev` whose head commit message contains `[merge]` (anywhere,
-#      case-insensitive) OR starts with `chore(release):` (case-insensitive).
-#   2. push of any `v*` tag (release tag, regardless of which branch it points
-#      to). The PR is still opened from `dev` head -> `main` head.
+#   1. push to `dev` whose head commit message starts with `[merge]` or
+#      `chore(release):` (case-insensitive prefix match).
+#   2. push of any `chore.*` tag (e.g. `chore.merge-20240509`,
+#      `chore.promote-v1.7.0`). Intentionally distinct from the `v*` release
+#      tags consumed by `release.yml`, so promote-to-main and release-build
+#      are decoupled.
 #   3. manual `workflow_dispatch` from the Actions tab.
+#
+# Every trigger opens or refreshes a single PR `dev -> main` and requests
+# `gh pr merge --auto`. Auto-merge waits for **every required status check**
+# configured on the `main` branch protection rule (typecheck + build matrix
+# from `dev-build.yml`, plus any other check you mark as required) to pass
+# before merging.
 #
 # Required secrets (re-uses the App that already opens nnphook native PRs):
 #   - SNOWLUMA_BOT_APP_ID
@@ -18,16 +26,19 @@ name: Promote Dev to Main
 #   - Contents:      Read+Write
 #   - Pull requests: Read+Write
 #
-# To make `gh pr merge --auto` actually merge under `main` branch protection,
-# allow the App to bypass required PR rules (Settings -> Rules / Branches ->
-# Edit rule -> "Allow specified actors to bypass" / "Restrict pushes" -> add
-# the App). Otherwise the PR will sit in auto-merge state until a human
-# approves it.
+# Branch protection on `main` should:
+#   - Require a pull request before merging.
+#   - Require status checks to pass before merging, with all dev-build /
+#     typecheck jobs marked as required.
+#   - Block force pushes and direct pushes (no user/team push allowance).
+#   - Add the SnowLuma Bot App to the bypass list so `gh pr merge --auto`
+#     can complete the merge once required checks are green; without bypass
+#     the PR will sit in auto-merge until a human approver intervenes.
 
 on:
   push:
     branches: [dev]
-    tags: ['v*']
+    tags: ['chore.*']
   workflow_dispatch:
     inputs:
       auto_merge:
@@ -87,12 +98,12 @@ jobs:
                 reason="Tag push: ${REF}"
               elif [ "${REF}" = 'refs/heads/dev' ]; then
                 msg="${HEAD_COMMIT_MSG:-}"
-                if printf '%s' "${msg}" | grep -qiE '\[merge\]|^chore\(release\):'; then
+                if printf '%s' "${msg}" | grep -qiE '^\[merge\]|^chore\(release\):'; then
                   run='true'
                   merge_method='merge'
-                  reason='Commit message marker on dev ([merge] or chore(release):)'
+                  reason='Commit message prefix on dev ([merge] or chore(release):)'
                 else
-                  reason='Commit on dev without [merge] / chore(release): marker'
+                  reason='Commit on dev without [merge] / chore(release): prefix'
                 fi
               else
                 reason="Push event on unhandled ref: ${REF}"
