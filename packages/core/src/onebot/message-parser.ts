@@ -158,9 +158,12 @@ async function segmentToElement(type: string, data: Record<string, unknown>, opt
       };
     }
     case 'video': {
+      const source = String(data.file ?? data.url ?? data.path ?? '');
+      if (!source) return null;
       return {
         type: 'video',
-        url: String(data.file ?? data.url ?? ''),
+        url: source,
+        thumbUrl: data.thumb ? String(data.thumb) : undefined,
       };
     }
     case 'json': {

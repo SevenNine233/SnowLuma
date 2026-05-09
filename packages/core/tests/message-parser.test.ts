@@ -1,8 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { describe, it, expect, vi } from 'vitest';
 import { parseMessage } from '../src/onebot/message-parser';
 import { buildSendElems } from '../src/bridge/builders/element-builder';
 import { MentionExtraSendSchema } from '../src/bridge/proto/action';
-import { protoDecode } from '../src/protobuf/decode';
+import { makeOidbBaseSchema } from '../src/bridge/proto/oidb';
+import { NTV2UploadRichMediaRespSchema } from '../src/bridge/proto/highway';
+import { protoDecode, protoEncode } from '../src/protobuf/decode';
 
 describe('parseMessage', () => {
   describe('plain text', () => {
@@ -95,6 +100,22 @@ describe('parseMessage', () => {
       expect(result).toEqual([{ type: 'record', url: 'file:///tmp/voice.amr' }]);
     });
 
+    it('parses video segment from data.path and preserves thumb', async () => {
+      const result = await parseMessage(
+        [{ type: 'video', data: { path: '/tmp/clip.mp4', thumb: '/tmp/clip.png' } }] as any,
+        false,
+      );
+      expect(result).toEqual([{ type: 'video', url: '/tmp/clip.mp4', thumbUrl: '/tmp/clip.png' }]);
+    });
+
+    it('drops video segment with empty source', async () => {
+      const result = await parseMessage(
+        [{ type: 'video', data: {} }] as any,
+        false,
+      );
+      expect(result).toEqual([]);
+    });
+
     it('parses record segment from data.path (NapCat parity)', async () => {
       const result = await parseMessage(
         [{ type: 'record', data: { path: 'C:\\voices\\hi.silk' } }] as any,
@@ -184,6 +205,77 @@ describe('parseMessage', () => {
       // Only the leading text should make it through.
       expect(protoElems).toHaveLength(1);
       expect(protoElems[0].text?.str).toBe('hi ');
+    });
+
+    it('skips video send when SendContext is absent (graceful no-bridge path)', async () => {
+      const elements = await parseMessage(
+        [
+          { type: 'text', data: { text: 'hi ' } },
+          { type: 'video', data: { file: '/tmp/x.mp4' } },
+        ] as any,
+        false,
+      );
+      const protoElems = await buildSendElems(elements);
+      expect(protoElems).toHaveLength(1);
+      expect(protoElems[0].text?.str).toBe('hi ');
+    });
+
+    it('builds video commonElem through NTV2 fast-upload response', async () => {
+      const videoPath = path.join(os.tmpdir(), `snowluma-video-test-${process.pid}-${Date.now()}.mp4`);
+      fs.writeFileSync(videoPath, Buffer.from([0, 1, 2, 3]));
+
+      const respSchema = makeOidbBaseSchema(NTV2UploadRichMediaRespSchema);
+      const responseData = protoEncode({
+        command: 0x11EA,
+        subCommand: 100,
+        errorCode: 0,
+        body: {
+          respHead: { retCode: 0, message: '' },
+          upload: {
+            uKey: '',
+            msgInfo: {
+              msgInfoBody: [
+                { index: { fileUuid: 'video-uuid' }, fileExist: true },
+                { index: { fileUuid: 'thumb-uuid' }, fileExist: true },
+              ],
+              extBizInfo: {
+                video: { bytesPbReserve: new Uint8Array([0x80, 0x01, 0x00]) },
+              },
+            },
+            subFileInfos: [{ uKey: '' }],
+          },
+        },
+        errorMsg: '',
+        reserved: 1,
+      }, respSchema);
+
+      const bridge = {
+        qqInfo: { uin: '10000' },
+        sendRawPacket: vi.fn(async () => ({
+          success: true,
+          gotResponse: true,
+          errorCode: 0,
+          errorMessage: '',
+          responseData,
+        })),
+      } as any;
+
+      try {
+        const protoElems = await buildSendElems([{
+          type: 'video',
+          url: videoPath,
+          thumbUrl: 'base64://iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+        }], { bridge, groupId: 123456 });
+
+        expect(bridge.sendRawPacket).toHaveBeenCalledTimes(1);
+        expect(bridge.sendRawPacket).toHaveBeenCalledWith('OidbSvcTrpcTcp.0x11ea_100', expect.any(Uint8Array));
+        expect(protoElems).toHaveLength(1);
+        expect(protoElems[0].commonElem?.serviceType).toBe(48);
+        expect(protoElems[0].commonElem?.businessType).toBe(21);
+        expect(protoElems[0].commonElem?.pbElem).toBeInstanceOf(Uint8Array);
+      } finally {
+        try { fs.unlinkSync(videoPath); } catch { /* ignore */ }
+      }
     });
 
     it('parses multiple segments', async () => {
