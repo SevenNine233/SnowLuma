@@ -392,21 +392,23 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
   // --- Media ---
 
   h.registerAction('get_image', async (params) => {
-    const file = asString(params.file);
+    const file = asString(params.file) || asString(params.file_id);
     if (!file) return failedResponse(RETCODE.BAD_REQUEST, 'file is required');
-    const imageInfo = findMediaInStore('image', file, ctx);
-    if (imageInfo) {
-      return okResponse(imageInfo as unknown as import('../types').JsonValue);
+    if (!ctx.getImageInfo) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    const info = await ctx.getImageInfo(file);
+    if (info) {
+      return okResponse(info as unknown as import('../types').JsonValue);
     }
     return failedResponse(RETCODE.ACTION_FAILED, 'image not found in cache');
   });
 
   h.registerAction('get_record', async (params) => {
-    const file = asString(params.file);
+    const file = asString(params.file) || asString(params.file_id);
     if (!file) return failedResponse(RETCODE.BAD_REQUEST, 'file is required');
-    const recordInfo = findMediaInStore('record', file, ctx);
-    if (recordInfo) {
-      return okResponse(recordInfo as unknown as import('../types').JsonValue);
+    if (!ctx.getRecordInfo) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    const info = await ctx.getRecordInfo(file);
+    if (info) {
+      return okResponse(info as unknown as import('../types').JsonValue);
     }
     return failedResponse(RETCODE.ACTION_FAILED, 'record not found in cache');
   });
@@ -734,23 +736,6 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
   h.registerAction('.send_packet', async () => {
     return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
   });
-}
-
-/**
- * Search through cached message segments to find a media element (image/record)
- * that matches the given file identifier.
- */
-function findMediaInStore(
-  mediaType: 'image' | 'record',
-  file: string,
-  ctx: ApiActionContext,
-): Record<string, unknown> | null {
-  // The file param can match a file id, a URL, or a filename stored in segments.
-  // We don't have a reverse index, so this is best-effort from stored events.
-  // Most callers will pass the `file` field from a received message segment.
-  // Just return the info if we can look it up from any recent cached message.
-  // This is a known limitation — full implementation would require a media cache.
-  return null;
 }
 
 /**

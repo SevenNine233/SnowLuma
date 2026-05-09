@@ -105,6 +105,9 @@ export interface ApiActionContext {
   getCookiesStr?: (domain: string) => Promise<string>;
   getCsrfToken?: () => Promise<number>;
   getCredentials?: (domain: string) => Promise<{ cookies: string; token: number; csrf_token: number }>;
+  // Media lookup (populated from previously dispatched message segments)
+  getImageInfo?: (file: string) => Promise<JsonObject | null>;
+  getRecordInfo?: (file: string) => Promise<JsonObject | null>;
 }
 
 type ActionHandler = (params: JsonObject) => Promise<import('./types').ApiResponse>;
