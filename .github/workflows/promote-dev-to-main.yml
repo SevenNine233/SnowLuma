@@ -1,33 +1,8 @@
 name: Promote Dev to Main
-
-# Opens (or refreshes) a Pull Request that promotes the `dev` branch into
-# `main`, authored by the SnowLuma Bot GitHub App.
-#
-# Triggers
-#   1. push to `dev` whose head commit message contains `[merge]` (anywhere,
-#      case-insensitive) OR starts with `chore(release):` (case-insensitive).
-#   2. push of any `v*` tag (release tag, regardless of which branch it points
-#      to). The PR is still opened from `dev` head -> `main` head.
-#   3. manual `workflow_dispatch` from the Actions tab.
-#
-# Required secrets (re-uses the App that already opens nnphook native PRs):
-#   - SNOWLUMA_BOT_APP_ID
-#   - SNOWLUMA_BOT_PRIVATE_KEY
-#
-# The GitHub App must be installed on SnowLuma/SnowLuma with:
-#   - Contents:      Read+Write
-#   - Pull requests: Read+Write
-#
-# To make `gh pr merge --auto` actually merge under `main` branch protection,
-# allow the App to bypass required PR rules (Settings -> Rules / Branches ->
-# Edit rule -> "Allow specified actors to bypass" / "Restrict pushes" -> add
-# the App). Otherwise the PR will sit in auto-merge state until a human
-# approves it.
-
 on:
   push:
     branches: [dev]
-    tags: ['v*']
+    tags: ['chore.*']
   workflow_dispatch:
     inputs:
       auto_merge:
@@ -87,12 +62,12 @@ jobs:
                 reason="Tag push: ${REF}"
               elif [ "${REF}" = 'refs/heads/dev' ]; then
                 msg="${HEAD_COMMIT_MSG:-}"
-                if printf '%s' "${msg}" | grep -qiE '\[merge\]|^chore\(release\):'; then
+                if printf '%s' "${msg}" | grep -qiE '^\[merge\]|^chore\(release\):'; then
                   run='true'
                   merge_method='merge'
-                  reason='Commit message marker on dev ([merge] or chore(release):)'
+                  reason='Commit message prefix on dev ([merge] or chore(release):)'
                 else
-                  reason='Commit on dev without [merge] / chore(release): marker'
+                  reason='Commit on dev without [merge] / chore(release): prefix'
                 fi
               else
                 reason="Push event on unhandled ref: ${REF}"

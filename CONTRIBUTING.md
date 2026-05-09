@@ -12,30 +12,25 @@ SnowLuma 使用 **`main` + `dev`** 双分支模型：
 
 新增工作流 `.github/workflows/promote-dev-to-main.yml` 会以 `SnowLuma Bot` 身份开 / 更新一个 `dev → main` 的 PR，并可选地自动合并。三种触发方式：
 
-### 1. 提交信息标记（推荐日常使用）
+无论使用哪种触发方式，工作流都会调用 `gh pr merge --auto`：**只有 `main` 分支保护中所有 required status checks（typecheck + 各架构 build）都通过后，机器人才会真正合并**。失败的工作流会卡住合并。
 
-向 `dev` push 一个提交，提交信息满足以下任一条件即触发：
+### 1. 提交信息前缀（推荐日常使用）
 
-- 任意位置包含 `[merge]`（不区分大小写）
-- 以 `chore(release):` 开头（不区分大小写，符合 conventional commits 的发版习惯）
+向 `dev` push 一个提交，提交信息**以**以下任一前缀**开头**即触发（不区分大小写）：
 
-示例：
+- `[merge]` — 例如 `[merge] fix: hotfix for OneBot mention`
+- `chore(release):` — 例如 `chore(release): v1.7.0`，符合 conventional commits 的发版习惯
 
-```text
-fix: correct OneBot mention encoding [merge]
-```
+> 注意：是**前缀**匹配，不是任意位置。`fix: something [merge]` 不会触发，必须把 `[merge]` 写在最前面。
 
-```text
-chore(release): v1.7.0
-```
+### 2. 推送 `chore.*` Tag
 
-提交被推到 `dev` 后，工作流会启用 PR 的 auto-merge（默认 `merge` 策略），分支保护满足后由机器人自动合并。
+任何符合 `chore.*` 的 tag（如 `chore.merge-20240509`、`chore.promote-v1.7.0`）被推送时也会触发本工作流。这是和发布 tag 解耦的「合并触发 tag」：
 
-### 2. 推送 `v*` Tag
+- `chore.*` → 仅触发 `promote-dev-to-main.yml`（开 PR，自动合并）
+- `v*` → 仅触发 `release.yml`（构建发布产物）
 
-任何符合 `v*` 的 tag（如 `v1.7.0`、`v1.7.0-rc.1`）被推送时也会触发本工作流。tag 通常打在 `dev` HEAD 上，工作流随后开 PR 把 `dev` 合入 `main`。
-
-> 注意：`release.yml` 同样监听 `v*` tag，并基于 tag 指向的 commit 构建发布产物。两者并行执行，互不冲突。
+推荐流程：先用 `chore.*` tag 把 `dev` 合入 `main`，待合并完成后再在 `main` 上打 `v*` tag 触发发布。这样 `release.yml` 始终基于已经过完所有检查的 `main` HEAD 构建。
 
 ### 3. 手动触发
 
@@ -56,9 +51,16 @@ chore(release): v1.7.0
    - **Restrict deletions** — 禁止删除 `main`。
    - **Require a pull request before merging** — 所有合并必须走 PR。
    - **Block force pushes** — 禁止强推。
-   - （可选）**Require status checks to pass before merging** — 关联 `Dev Build` / `typecheck` 等检查。
-4. 在 **Bypass list** 中加入 `SnowLuma Bot` GitHub App。这样 `gh pr merge --auto` 才能在没有人工 review 的情况下完成合并。
-5. 不要把任何用户加入 push 白名单，确保「禁止向 `main` 直接提交」的约束生效。
+   - **Require status checks to pass before merging（必勾）** — 把以下来自 `dev-build.yml` 的 check 全部加为 required：
+     - `typecheck`
+     - `build (win-x64)`
+     - `build (linux-x64)`
+     - `build (linux-arm64)`
+   - **Require branches to be up to date before merging** — 保证 PR 合并前已 rebase 过最新 `main`。
+4. 在 **Bypass list / Allow specified actors to bypass** 中加入 `SnowLuma Bot` GitHub App。这样 `gh pr merge --auto` 才能在所有 required check 通过后由机器人自动完成合并；否则 PR 会一直卡在 auto-merge 等待人工 review。
+5. **不要**把任何用户加入 push 白名单，确保「禁止向 `main` 直接提交」的约束生效。第一次设置完后，连仓库管理员也只能通过 PR 改 `main`。
+
+效果：任何对 `dev` 的推送都会先在 `dev-build.yml` 上跑 typecheck + 三个架构的 build；只有全部成功，promote 工作流的 `--auto` 合并才会真正发生。失败时 PR 会保留在 open 状态，修复后再次推到 `dev` 即可重新触发检查。
 
 ## 必需的 Secrets
 
@@ -85,12 +87,20 @@ pnpm -s --filter @snowluma/core test
 git commit -m "fix: something"
 git push
 
-# 准备发布 / 合入 main
-git commit -m "chore(release): v1.7.0"
-# 或者
-git commit -m "fix: hotfix [merge]"
+# 把 dev 合入 main（三选一）
 
-git push                                # → 触发 promote-dev-to-main 工作流
-# 或者
-git tag v1.7.0 && git push origin v1.7.0  # → 同时触发 release.yml + promote-dev-to-main
+# 方式 A：commit-msg 前缀
+git commit -m "chore(release): v1.7.0"     # 或 "[merge] fix: hotfix"
+git push                                    # → 触发 promote-dev-to-main
+
+# 方式 B：chore.* 合并 tag（与发布 tag 解耦）
+git tag chore.merge-20240509                # 或 chore.promote-v1.7.0 等
+git push origin chore.merge-20240509        # → 触发 promote-dev-to-main
+
+# 方式 C：在 Actions 页面手动 Run workflow
+
+# 合并完成后，发布版本（在 main 上打 v* tag）
+git checkout main && git pull
+git tag v1.7.0
+git push origin v1.7.0                      # → 仅触发 release.yml
 ```
