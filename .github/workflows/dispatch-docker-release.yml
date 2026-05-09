@@ -1,9 +1,27 @@
-name: Dispatch Docker Release
+name: Re-dispatch Docker Release
+
+# Manual-only re-dispatcher for SnowLuma.Docker.Framework's docker-image.yml.
+#
+# The normal flow is automatic: release.yml's `dispatch-docker` job fires
+# after a tag-triggered release is published. This workflow exists for
+# rebuilding an existing release's Docker image without re-tagging — for
+# example after fixing the Dockerfile, rotating a Docker Hub credential,
+# or backfilling an older tag.
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      snowluma_tag:
+        description: 'SnowLuma release tag to rebuild (e.g. v0.5.0)'
+        required: true
+      docker_image_override:
+        description: 'Override Docker image name (defaults to vars.DOCKER_IMAGE)'
+        required: false
+        default: ''
+      platforms_override:
+        description: 'Override platforms (defaults to vars.DOCKER_PLATFORMS or linux/amd64,linux/arm64)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -13,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: SnowLuma
     steps:
-      - name: Dispatch Docker release request
+      - name: Dispatch Docker rebuild
         uses: actions/github-script@v8
         env:
           RELEASE_REPOSITORY: ${{ vars.DOCKER_RELEASE_REPOSITORY }}
@@ -21,6 +39,9 @@ jobs:
           DOCKER_PLATFORMS: ${{ vars.DOCKER_PLATFORMS }}
           DOCKER_WORKFLOW: ${{ vars.DOCKER_WORKFLOW }}
           DOCKER_REF: ${{ vars.DOCKER_REF }}
+          SNOWLUMA_TAG: ${{ inputs.snowluma_tag }}
+          IMAGE_OVERRIDE: ${{ inputs.docker_image_override }}
+          PLATFORMS_OVERRIDE: ${{ inputs.platforms_override }}
         with:
           github-token: ${{ secrets.DOCKER_RELEASE_TOKEN }}
           script: |
@@ -29,20 +50,16 @@ jobs:
               throw new Error('Set SnowLuma environment variable DOCKER_RELEASE_REPOSITORY to owner/repo.');
             }
 
+            const tag = process.env.SNOWLUMA_TAG;
+            if (!tag) throw new Error('snowluma_tag input is required.');
+
             const [owner, repo] = target.split('/');
-            const refName = context.ref.replace('refs/tags/', '');
-            const image = process.env.DOCKER_IMAGE || 'motricseven7/snowluma';
-            const platforms = process.env.DOCKER_PLATFORMS || 'linux/amd64,linux/arm64';
+            const sourceRepo = context.repo.owner + '/' + context.repo.repo;
+            const image = process.env.IMAGE_OVERRIDE || process.env.DOCKER_IMAGE || 'motricseven7/snowluma';
+            const platforms = process.env.PLATFORMS_OVERRIDE || process.env.DOCKER_PLATFORMS || 'linux/amd64,linux/arm64';
             const workflowId = process.env.DOCKER_WORKFLOW || 'docker-image.yml';
             const ref = process.env.DOCKER_REF || 'main';
 
-            // The target repo (SnowLuma.Docker.Framework) only declares an
-            // `on: workflow_dispatch` trigger on docker-image.yml — it has no
-            // `repository_dispatch` listener, so an older
-            // `repos.createDispatchEvent` call would arrive but match nothing
-            // and be silently dropped. We invoke `workflow_dispatch` directly
-            // with inputs matching that workflow's declared schema (image,
-            // tag, push, platforms).
             await github.rest.actions.createWorkflowDispatch({
               owner,
               repo,
@@ -50,10 +67,12 @@ jobs:
               ref,
               inputs: {
                 image,
-                tag: refName,
+                tag,
                 push: 'true',
                 platforms,
+                snowluma_tag: tag,
+                snowluma_repository: sourceRepo,
               },
             });
 
-            core.info(`Dispatched ${workflowId}@${ref} on ${target} with image=${image} tag=${refName} platforms=${platforms}.`);
+            core.info(`Re-dispatched ${workflowId}@${ref} on ${target} for SnowLuma release ${sourceRepo}@${tag} (image=${image}, platforms=${platforms}).`);
