@@ -5,6 +5,7 @@ import type { QQInfo } from '../bridge/qq-info';
 import { ApiHandler } from './api-handler';
 import { EventConverter } from './event-converter';
 import { MessageStore } from './message-store';
+import { MediaCache } from './media-cache';
 import { RKeyCache } from './instance-rkey';
 import { buildApiContext } from './instance-context';
 import { GROUP_MESSAGE_EVENT, PRIVATE_MESSAGE_EVENT, hashMessageIdInt32 } from './message-id';
@@ -25,6 +26,7 @@ export class OneBotInstance {
   private readonly apiHandler: ApiHandler;
   private readonly eventConverter: EventConverter;
   private readonly messageStore: MessageStore;
+  private readonly mediaCache: MediaCache;
   private readonly httpTransport: HttpTransport;
   private readonly httpPostTransport: HttpPostTransport;
   private readonly wsTransport: WsTransport;
@@ -42,6 +44,7 @@ export class OneBotInstance {
 
     this.eventConverter = new EventConverter();
     this.rkeyCache = new RKeyCache();
+    this.mediaCache = new MediaCache();
     this.eventConverter.setImageUrlResolver((element, isGroup) =>
       this.rkeyCache.resolveImageUrl(this.bridge, element, isGroup));
     this.eventConverter.setMediaUrlResolver(async (element, isGroup, sessionId) => {
@@ -70,6 +73,36 @@ export class OneBotInstance {
       // Then apply RKey if needed
       return this.rkeyCache.resolveMediaUrl(this.bridge, element, isGroup);
     });
+    this.eventConverter.setMediaSegmentSink((mediaType, element, data, isGroup, sessionId) => {
+      const url = typeof data.url === 'string' ? data.url : '';
+      const file = typeof data.file === 'string' ? data.file : '';
+      if (mediaType === 'image') {
+        this.mediaCache.rememberImage({
+          file: file || element.fileId || '',
+          url,
+          fileSize: element.fileSize ?? 0,
+          fileName: element.fileId ?? '',
+          subType: element.subType ?? 0,
+          summary: element.summary ?? '',
+          imageUrl: element.imageUrl ?? '',
+          isGroup,
+          sessionId,
+        });
+        return;
+      }
+      this.mediaCache.rememberRecord({
+        file: file || element.fileName || element.fileId || '',
+        fileId: element.fileId ?? '',
+        url,
+        fileSize: element.fileSize ?? 0,
+        fileName: element.fileName ?? '',
+        duration: element.duration ?? 0,
+        fileHash: element.fileHash ?? '',
+        mediaNode: element.mediaNode,
+        isGroup,
+        sessionId,
+      });
+    });
     this.eventConverter.setMessageIdResolver((isGroup, sessionId, sequence, eventName) =>
       hashMessageIdInt32(sequence, sessionId, eventName || (isGroup ? GROUP_MESSAGE_EVENT : PRIVATE_MESSAGE_EVENT)));
     this.messageStore = new MessageStore(path.join('data', this.uin, 'messages.json'));
@@ -79,6 +112,7 @@ export class OneBotInstance {
       qqInfo: this.qqInfo,
       bridge: this.bridge,
       messageStore: this.messageStore,
+      mediaCache: this.mediaCache,
       musicSignUrl: config.musicSignUrl,
       cacheMessageMeta: (messageId, meta) => this.cacheMessageMeta(messageId, meta),
     });

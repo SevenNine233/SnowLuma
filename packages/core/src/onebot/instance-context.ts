@@ -6,6 +6,7 @@ import { elementsToOneBotSegments } from './event-converter';
 import { MessageStore } from './message-store';
 import { parseMessage } from './message-parser';
 import { GROUP_MESSAGE_EVENT, PRIVATE_MESSAGE_EVENT, hashMessageIdInt32 } from './message-id';
+import type { MediaCache } from './media-cache';
 import type { JsonObject, JsonValue, MessageMeta } from './types';
 import { createLogger } from '../utils/logger';
 import {WebHonorType} from "@/bridge/web/group-honor";
@@ -17,12 +18,13 @@ export interface InstanceRef {
   qqInfo: QQInfo;
   bridge: Bridge;
   messageStore: MessageStore;
+  mediaCache: MediaCache;
   musicSignUrl?: string;
   cacheMessageMeta(messageId: number, meta: MessageMeta): void;
 }
 
 export function buildApiContext(ref: InstanceRef): ApiActionContext {
-  const { bridge, qqInfo, messageStore } = ref;
+  const { bridge, qqInfo, messageStore, mediaCache } = ref;
 
   return {
     getLoginInfo: () => getLoginInfo(ref),
@@ -135,6 +137,58 @@ export function buildApiContext(ref: InstanceRef): ApiActionContext {
     getCookiesStr: (domain: string) => bridge.getCookiesStr(domain),
     getCsrfToken: () => bridge.getCsrfToken(),
     getCredentials: (domain: string) => bridge.getCredentials(domain),
+    // Media lookup
+    getImageInfo: (file) => handleGetImageInfo(mediaCache, file),
+    getRecordInfo: (file) => handleGetRecordInfo(bridge, mediaCache, file),
+  };
+}
+
+// --- Media lookup ---
+
+async function handleGetImageInfo(
+  mediaCache: MediaCache,
+  file: string,
+): Promise<JsonObject | null> {
+  const cached = mediaCache.findImage(file);
+  if (!cached) return null;
+  const url = cached.url || cached.imageUrl || '';
+  return {
+    file: url || cached.file,
+    url,
+    file_size: String(cached.fileSize ?? 0),
+    file_name: cached.fileName || cached.file,
+  };
+}
+
+async function handleGetRecordInfo(
+  bridge: Bridge,
+  mediaCache: MediaCache,
+  file: string,
+): Promise<JsonObject | null> {
+  const cached = mediaCache.findRecord(file);
+  if (!cached) return null;
+
+  // Re-resolve via OIDB if the cached URL is missing or empty.
+  // Mirrors NapCat's getPttUrl path: GetGroupPttUrl / GetPttUrl by fileUuid.
+  let url = cached.url;
+  if (!url && cached.mediaNode) {
+    try {
+      url = cached.isGroup
+        ? await bridge.fetchGroupPttUrlByNode(cached.sessionId, cached.mediaNode)
+        : await bridge.fetchPrivatePttUrlByNode(cached.mediaNode);
+      if (url) {
+        mediaCache.updateRecordUrl(file, url);
+      }
+    } catch (err) {
+      log.warn('get_record url refetch failed: %s', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return {
+    file: url || cached.file,
+    url: url || '',
+    file_size: String(cached.fileSize ?? 0),
+    file_name: cached.fileName || cached.file,
   };
 }
 
