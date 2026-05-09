@@ -13,8 +13,8 @@ on:
       merge_method:
         description: Merge strategy when auto-merging
         type: choice
-        options: ['squash', 'merge', 'rebase']
-        default: 'squash'
+        options: ['merge', 'squash', 'rebase']
+        default: 'merge'
 
 permissions:
   contents: read
@@ -45,26 +45,26 @@ jobs:
           set -euo pipefail
           run='false'
           auto_merge='true'
-          merge_method='squash'
+          merge_method='merge'
           reason=''
 
           case "${EVENT_NAME}" in
             workflow_dispatch)
               run='true'
               auto_merge="${INPUT_AUTO_MERGE:-true}"
-              merge_method="${INPUT_MERGE_METHOD:-squash}"
+              merge_method="${INPUT_MERGE_METHOD:-merge}"
               reason='Manual workflow_dispatch'
               ;;
             push)
               if [ "${REF_TYPE}" = 'tag' ]; then
                 run='true'
-                merge_method='squash'
+                merge_method='merge'
                 reason="Tag push: ${REF}"
               elif [ "${REF}" = 'refs/heads/dev' ]; then
                 msg="${HEAD_COMMIT_MSG:-}"
                 if printf '%s' "${msg}" | grep -qiE '^\[merge\]|^chore\(release\):'; then
                   run='true'
-                  merge_method='squash'
+                  merge_method='merge'
                   reason='Commit message prefix on dev ([merge] or chore(release):)'
                 else
                   reason='Commit on dev without [merge] / chore(release): prefix'
@@ -235,11 +235,11 @@ jobs:
           MERGE_METHOD: ${{ needs.decide.outputs.merge_method }}
         run: |
           set -euo pipefail
-          method_flag='--squash'
+          method_flag='--merge'
           case "${MERGE_METHOD}" in
-            merge)  method_flag='--merge' ;;
+            squash) method_flag='--squash' ;;
             rebase) method_flag='--rebase' ;;
-            *)      method_flag='--squash' ;;
+            *)      method_flag='--merge' ;;
           esac
           gh pr merge "${PR_NUMBER}" --auto ${method_flag}
           echo "::notice::Auto-merge enabled on PR #${PR_NUMBER} with strategy: ${MERGE_METHOD}"
