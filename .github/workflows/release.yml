@@ -181,7 +181,7 @@ jobs:
           DOCKER_WORKFLOW: ${{ vars.DOCKER_WORKFLOW }}
           DOCKER_REF: ${{ vars.DOCKER_REF }}
         with:
-          github-token: ${{ secrets.DOCKER_RELEASE_TOKEN }}
+          github-token: ${{ secrets.SNOWLUMA_TOKEN }}
           script: |
             const target = process.env.RELEASE_REPOSITORY;
             if (!target || !target.includes('/')) {
