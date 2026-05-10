@@ -597,12 +597,16 @@ export function parseMsgPush(pkt: PacketInfo, qqInfo: QQInfo): QQEventVariant[] 
     case PkgType.GroupMemberIncreaseNotice: {
       const change = protoDecode(content, GroupChangeSchema);
       if (!change) return [];
+      const groupId = change.groupUin ?? 0;
+      const userUid = change.memberUid ?? '';
+      const operatorUid = decodeOperatorUid(change.operatorBytes ?? new Uint8Array(0));
       const ev: GroupMemberJoin = {
         kind: 'group_member_join', time: timestamp, selfUin,
-        groupId: change.groupUin ?? 0,
-        userUin: resolveUidToUin(qqInfo, change.groupUin ?? 0, change.memberUid ?? '', fromUin),
-        operatorUin: resolveUidToUin(qqInfo, change.groupUin ?? 0,
-          decodeOperatorUid(change.operatorBytes ?? new Uint8Array(0)), fromUin),
+        groupId,
+        userUin: resolveUidToUin(qqInfo, groupId, userUid, 0),
+        operatorUin: resolveUidToUin(qqInfo, groupId, operatorUid, 0),
+        userUid,
+        operatorUid,
       };
       return [ev];
     }
@@ -611,12 +615,16 @@ export function parseMsgPush(pkt: PacketInfo, qqInfo: QQInfo): QQEventVariant[] 
       const change = protoDecode(content, GroupChangeSchema);
       if (!change) return [];
       const dt = change.decreaseType ?? 0;
+      const groupId = change.groupUin ?? 0;
+      const userUid = change.memberUid ?? '';
+      const operatorUid = decodeOperatorUid(change.operatorBytes ?? new Uint8Array(0));
       const ev: GroupMemberLeave = {
         kind: 'group_member_leave', time: timestamp, selfUin,
-        groupId: change.groupUin ?? 0,
-        userUin: resolveUidToUin(qqInfo, change.groupUin ?? 0, change.memberUid ?? '', fromUin),
-        operatorUin: resolveUidToUin(qqInfo, change.groupUin ?? 0,
-          decodeOperatorUid(change.operatorBytes ?? new Uint8Array(0)), fromUin),
+        groupId,
+        userUin: resolveUidToUin(qqInfo, groupId, userUid, 0),
+        operatorUin: resolveUidToUin(qqInfo, groupId, operatorUid, 0),
+        userUid,
+        operatorUid,
         isKick: dt !== 0 && dt !== 130,
       };
       return [ev];

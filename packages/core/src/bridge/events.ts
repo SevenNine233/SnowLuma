@@ -98,6 +98,8 @@ export interface GroupMemberJoin extends QQEvent {
   groupId: number;
   userUin: number;
   operatorUin: number;
+  userUid?: string;
+  operatorUid?: string;
 }
 
 export interface GroupMemberLeave extends QQEvent {
@@ -105,6 +107,8 @@ export interface GroupMemberLeave extends QQEvent {
   groupId: number;
   userUin: number;
   operatorUin: number;
+  userUid?: string;
+  operatorUid?: string;
   isKick: boolean;
 }
 
