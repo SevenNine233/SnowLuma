@@ -30,7 +30,10 @@ import type { WebHonorType } from './web/group-honor';
 import {
   muteGroupMember as muteGroupMember_,
   muteGroupAll as muteGroupAll_,
+  setGroupAddOption as setGroupAddOption_,
+  setGroupSearch as setGroupSearch_,
   kickGroupMember as kickGroupMember_,
+  kickGroupMembers as kickGroupMembers_,
   leaveGroup as leaveGroup_,
   setGroupAdmin as setGroupAdmin_,
   setGroupCard as setGroupCard_,
@@ -64,6 +67,7 @@ import {
   markPrivateMessageRead as markGroupMsgAsRead_,
   markGroupMessageRead as markPrivateMsgAsRead_,
   setFriendRemark as setFriendRemark_,
+  setGroupRemark as setGroupRemark_,
   fetchGroupFileCount as fetchGroupFileCount_,
   setOnlineStatus as setOnlineStatus_,
   setProfile as setProfile_,
@@ -77,6 +81,8 @@ import {
   clickInlineKeyboardButton as clickInlineKeyboardButton_,
   sendGroupSign as sendGroupSign_,
   setAvatar as setAvatar_,
+  fetchCustomFace as fetchCustomFace_,
+  getEmojiLikes as getEmojiLikes_,
 } from './bridge-actions';
 import {
   getGroupHonorInfo as getGroupHonorInfo_,
@@ -512,7 +518,10 @@ export class Bridge {
 
   async muteGroupMember(groupId: number, userId: number, duration: number): Promise<void> { return muteGroupMember_(this, groupId, userId, duration); }
   async muteGroupAll(groupId: number, enable: boolean): Promise<void> { return muteGroupAll_(this, groupId, enable); }
+  async setGroupAddOption(groupId: number, addType: number): Promise<void> { return setGroupAddOption_(this, groupId, addType); }
+  async setGroupSearch(groupId: number): Promise<void> { return setGroupSearch_(this, groupId); }
   async kickGroupMember(groupId: number, userId: number, reject: boolean, reason = ''): Promise<void> { return kickGroupMember_(this, groupId, userId, reject, reason); }
+  async kickGroupMembers(groupId: number, userIds: number[], reject: boolean): Promise<void> { return kickGroupMembers_(this, groupId, userIds, reject); }
   async leaveGroup(groupId: number): Promise<void> { return leaveGroup_(this, groupId); }
   async setGroupAdmin(groupId: number, userId: number, enable: boolean): Promise<void> { return setGroupAdmin_(this, groupId, userId, enable); }
   async setGroupCard(groupId: number, userId: number, card: string): Promise<void> { return setGroupCard_(this, groupId, userId, card); }
@@ -550,6 +559,7 @@ export class Bridge {
   async markGroupMsgAsRead(groupId: number, sequence: number): Promise<void> { return markGroupMsgAsRead_(this, groupId, sequence); }
   async markPrivateMsgAsRead(userId: number, sequence: number): Promise<void> { return markPrivateMsgAsRead_(this, userId, sequence); }
   async setFriendRemark(userId: number, remark: string): Promise<void> { return setFriendRemark_(this, userId, remark); }
+  async setGroupRemark(groupId: number, remark: string): Promise<void> { return setGroupRemark_(this, groupId, remark); }
   async getGroupHonorInfo(groupId: number, type: WebHonorType | string): Promise<any> {
     return getGroupHonorInfo_(this, groupId, type);
   }
@@ -615,6 +625,12 @@ export class Bridge {
   }
   async setAvatar(source: string): Promise<void> {
     return setAvatar_(this, source);
+  }
+  async fetchCustomFace(count?: number): Promise<string[]> {
+    return fetchCustomFace_(this, count);
+  }
+  async getEmojiLikes(groupId: number, sequence: number, emojiId: string, emojiType?: number, count?: number, cookie?: string) {
+    return getEmojiLikes_(this, groupId, sequence, emojiId, emojiType, count, cookie);
   }
 }
 
