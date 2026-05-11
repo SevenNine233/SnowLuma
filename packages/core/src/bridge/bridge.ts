@@ -470,7 +470,7 @@ export class Bridge {
   async sendPrivateMessage(userUin: number, elements: MessageElement[]): Promise<SendMessageReceipt> {
     if (elements.length === 0) throw new Error('message is empty');
 
-    // Resolve UID for image upload (C++ resolves UID before building elems)
+    // Resolve UID for media upload and the final c2c routing head.
     let userUid = '';
     const hasMedia = elements.some(e => e.type === 'image' || e.type === 'record' || e.type === 'video');
     if (hasMedia) {
@@ -485,6 +485,7 @@ export class Bridge {
       routingHead: {
         c2c: {
           uin: userUin,
+          ...(userUid ? { uid: userUid } : {}),
         },
       } as any,
       contentHead: {
