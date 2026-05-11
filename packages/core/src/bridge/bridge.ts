@@ -10,6 +10,7 @@ import { MSG_PUSH_CMD, parseMsgPush } from './handlers/msg-push-handler';
 import type { PacketSender, SendPacketResult } from '../protocol/packet-sender';
 import { protoEncode, protoDecode } from '../protobuf/decode';
 import { buildSendElems } from './builders/element-builder';
+import { IdentityService } from './identity-service';
 import { createLogger } from '../utils/logger';
 import {
   SendMessageRequestSchema,
@@ -133,6 +134,7 @@ export class Bridge {
   private static readonly SEND_MSG_CMD = 'MessageSvc.PbSendMsg';
 
   private qqInfo_: QQInfo;
+  readonly identity: IdentityService;
   private pids_ = new Set<number>();
   /**
    * Per-kind event subscription. Replaces the legacy single-callback
@@ -157,12 +159,18 @@ export class Bridge {
   private clientSeq_ = 100000000 + (Date.now() % 1000000000);
   private msgRandom_ = (Date.now() & 0xFFFFFFFF) >>> 0;
 
-  constructor(qqInfo: QQInfo) {
+  constructor(qqInfo: QQInfo, identity = IdentityService.memory(qqInfo)) {
     this.qqInfo_ = qqInfo;
+    this.identity = identity;
     this.registerDefaultHandlers();
   }
 
   get qqInfo(): QQInfo { return this.qqInfo_; }
+
+  dispose(): void {
+    this.identity.close();
+    this.events.clear();
+  }
 
   setPacketClient(client: PacketSender): void {
     this.packetClient_ = client;
@@ -271,7 +279,7 @@ export class Bridge {
   }
 
   private resolveUidFromCache(groupId: number, uid: string): number | null {
-    return this.qqInfo_.resolveGroupMemberUid(groupId, uid) ?? this.qqInfo_.resolveUid(uid);
+    return this.identity.findUinByUid(uid, groupId);
   }
 
   private isSelfMemberIdentity(uin: number, uid?: string): boolean {
@@ -280,6 +288,7 @@ export class Bridge {
   }
 
   private triggerMemberCacheRefresh(event: QQEventVariant, alreadyRefreshed = false): void {
+    this.rememberEventIdentity(event);
     if (alreadyRefreshed) return;
 
     let groupId = 0;
@@ -322,6 +331,38 @@ export class Bridge {
     })();
 
     this.memberRefreshTasks_.set(groupId, task);
+  }
+
+  private rememberEventIdentity(event: QQEventVariant): void {
+    switch (event.kind) {
+      case 'group_member_join':
+        this.identity.rememberGroupMemberIdentity(event.groupId, {
+          uid: event.userUid,
+          uin: event.userUin,
+        });
+        this.identity.rememberGroupMemberIdentity(event.groupId, {
+          uid: event.operatorUid,
+          uin: event.operatorUin,
+        });
+        break;
+      case 'group_member_leave':
+        this.identity.markGroupMemberInactive(event.groupId, {
+          uid: event.userUid,
+          uin: event.userUin,
+        });
+        this.identity.rememberGroupMemberIdentity(event.groupId, {
+          uid: event.operatorUid,
+          uin: event.operatorUin,
+        });
+        break;
+      case 'group_admin':
+        this.identity.rememberGroupMemberIdentity(event.groupId, {
+          uin: event.userUin,
+        });
+        break;
+      default:
+        break;
+    }
   }
 
   private async refreshMemberCache(groupId: number, refreshGroupList: boolean, forceMemberList: boolean): Promise<boolean> {
