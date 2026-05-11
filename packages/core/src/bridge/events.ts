@@ -144,6 +144,7 @@ export interface GroupRecallEvent extends QQEvent {
 export interface FriendRequestEvent extends QQEvent {
   kind: 'friend_request';
   fromUin: number;
+  fromUid?: string;
   message: string;
   flag: string;
 }
@@ -152,6 +153,7 @@ export interface GroupInviteEvent extends QQEvent {
   kind: 'group_invite';
   groupId: number;
   fromUin: number;
+  fromUid?: string;
   subType: string;
   message: string;
   flag: string;

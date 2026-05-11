@@ -360,6 +360,21 @@ export class Bridge {
           uin: event.userUin,
         });
         break;
+      case 'friend_request':
+        this.identity.rememberRequestIdentity({
+          uid: event.fromUid,
+          uin: event.fromUin,
+          source: 'friend_request',
+        });
+        break;
+      case 'group_invite':
+        this.identity.rememberRequestIdentity({
+          groupId: event.groupId,
+          uid: event.fromUid,
+          uin: event.fromUin,
+          source: 'group_request',
+        });
+        break;
       default:
         break;
     }

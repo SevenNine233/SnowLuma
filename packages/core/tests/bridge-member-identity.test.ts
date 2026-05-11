@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Bridge } from '../src/bridge/bridge';
 import { QQInfo, type GroupMemberInfo, type QQGroupInfo } from '../src/bridge/qq-info';
-import type { GroupMemberJoin } from '../src/bridge/events';
+import type { GroupMemberJoin, QQEventVariant } from '../src/bridge/events';
 import type { PacketInfo } from '../src/protocol/types';
 
 const SELF_UIN = '10001';
@@ -61,6 +61,13 @@ function makePacket(): PacketInfo {
   };
 }
 
+function makeRequestPacket(): PacketInfo {
+  return {
+    ...makePacket(),
+    serviceCmd: 'test.request_identity',
+  };
+}
+
 async function waitForEvent(events: GroupMemberJoin[]): Promise<GroupMemberJoin> {
   for (let i = 0; i < 10; i++) {
     if (events[0]) return events[0];
@@ -97,5 +104,40 @@ describe('Bridge group member identity refresh', () => {
     expect(bridge.memberFetches).toEqual([{ groupId: GROUP_ID, force: true }]);
     expect(event.userUin).toBe(member.uin);
     expect(event.operatorUin).toBe(member.uin);
+  });
+
+  it('remembers UID mappings from realtime request events', () => {
+    const qqInfo = new QQInfo(SELF_UIN);
+    const bridge = new Bridge(qqInfo);
+    const events: QQEventVariant[] = [
+      {
+        kind: 'friend_request',
+        time: 1710000000,
+        selfUin: Number(SELF_UIN),
+        fromUin: 55555,
+        fromUid: 'u_friend_request',
+        message: '',
+        flag: 'u_friend_request',
+      },
+      {
+        kind: 'group_invite',
+        time: 1710000000,
+        selfUin: Number(SELF_UIN),
+        groupId: GROUP_ID,
+        fromUin: 66666,
+        fromUid: 'u_group_request',
+        subType: 'add',
+        message: '',
+        flag: 'add:123456789:u_group_request',
+      },
+    ];
+
+    bridge.registerCmd('test.request_identity', () => events);
+    bridge.onPacket(makeRequestPacket());
+
+    expect(bridge.identity.findUidByUin(55555)).toBe('u_friend_request');
+    expect(bridge.identity.findUidByUin(66666)).toBe('u_group_request');
+    expect(bridge.identity.findUinByUid('u_friend_request')).toBe(55555);
+    expect(bridge.identity.findUinByUid('u_group_request')).toBe(66666);
   });
 });

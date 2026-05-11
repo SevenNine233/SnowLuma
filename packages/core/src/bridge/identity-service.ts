@@ -68,6 +68,8 @@ interface MemberRow {
 
 export class IdentityService {
   private readonly db: DatabaseSync | null;
+  private readonly uinByUid = new Map<string, number>();
+  private readonly uidByUin = new Map<number, string>();
   private inTransaction = false;
   private writeFailed = false;
 
@@ -110,6 +112,7 @@ export class IdentityService {
 
   rememberFriends(friends: FriendInfo[]): void {
     this.qqInfo.setFriends(friends);
+    for (const friend of friends) this.rememberUidUin(friend.uid, friend.uin);
     this.runWrite('friends', () => this.transaction(() => {
       this.db!.prepare('UPDATE users SET is_friend = 0, updated_at = ? WHERE is_friend = 1')
         .run(nowSeconds());
@@ -146,6 +149,7 @@ export class IdentityService {
 
   rememberGroupMembers(groupId: number, members: GroupMemberInfo[]): void {
     this.qqInfo.setGroupMembers(groupId, members);
+    for (const member of members) this.rememberUidUin(member.uid, member.uin);
     this.runWrite('group members', () => this.transaction(() => {
       this.upsertGroup({ groupId, memberCount: members.length });
       this.db!.prepare('UPDATE group_members SET active = 0, updated_at = ? WHERE group_id = ?')
@@ -173,6 +177,7 @@ export class IdentityService {
     this.qqInfo.setUserProfile(info);
     const selfUin = parseInt(this.qqInfo.uin, 10) || 0;
     if (info.uin === selfUin) this.qqInfo.setSelfProfile(info);
+    this.rememberUidUin(info.uid, info.uin);
     this.runWrite('user profile', () => this.transaction(() => this.upsertUser({
       uid: info.uid,
       uin: info.uin,
@@ -183,6 +188,11 @@ export class IdentityService {
   }
 
   rememberGroupRequests(requests: GroupRequestInfo[]): void {
+    for (const request of requests) {
+      this.rememberUidUin(request.targetUid, request.targetUin);
+      this.rememberUidUin(request.invitorUid, request.invitorUin);
+      this.rememberUidUin(request.operatorUid, request.operatorUin);
+    }
     this.runWrite('group requests', () => this.transaction(() => {
       for (const request of requests) {
         this.upsertGroup({ groupId: request.groupId, groupName: request.groupName });
@@ -208,10 +218,26 @@ export class IdentityService {
     }));
   }
 
+  rememberRequestIdentity(
+    identity: { groupId?: number; uid?: string; uin?: number; nickname?: string; source?: string },
+  ): void {
+    this.rememberUidUin(identity.uid, identity.uin);
+    this.runWrite('request identity', () => this.transaction(() => {
+      if (identity.groupId !== undefined) this.upsertGroup({ groupId: identity.groupId });
+      this.upsertUser({
+        uid: identity.uid,
+        uin: identity.uin,
+        nickname: identity.nickname,
+        source: identity.source || 'request',
+      });
+    }));
+  }
+
   rememberGroupMemberIdentity(
     groupId: number,
     identity: { uid?: string; uin?: number; nickname?: string; card?: string },
   ): void {
+    this.rememberUidUin(identity.uid, identity.uin);
     this.runWrite('group member identity', () => this.transaction(() => this.upsertGroupMember({
       groupId,
       uid: identity.uid,
@@ -248,6 +274,8 @@ export class IdentityService {
     }
     const globalCached = this.qqInfo.resolveUid(normalized);
     if (globalCached !== null) return globalCached;
+    const mapped = this.uinByUid.get(normalized);
+    if (mapped !== undefined) return mapped;
 
     if (!this.db) return null;
     if (groupId !== undefined) {
@@ -277,6 +305,8 @@ export class IdentityService {
     }
     const globalCached = this.qqInfo.findUidByUin(normalized);
     if (globalCached) return globalCached;
+    const mapped = this.uidByUin.get(normalized);
+    if (mapped) return mapped;
 
     if (!this.db) return null;
     if (groupId !== undefined) {
@@ -294,6 +324,14 @@ export class IdentityService {
       'SELECT uid FROM users WHERE uin = ? AND uid IS NOT NULL LIMIT 1',
     ).get(normalized) as { uid: string | null } | undefined;
     return normalizeUid(row?.uid) || null;
+  }
+
+  private rememberUidUin(uid: unknown, uin: unknown): void {
+    const normalizedUid = normalizeUid(uid);
+    const normalizedUin = normalizeUin(uin);
+    if (!normalizedUid || normalizedUin === null) return;
+    this.uinByUid.set(normalizedUid, normalizedUin);
+    this.uidByUin.set(normalizedUin, normalizedUid);
   }
 
   private initSchema(): void {

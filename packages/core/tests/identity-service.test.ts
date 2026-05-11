@@ -161,4 +161,37 @@ describe('IdentityService', () => {
       identity.close();
     }
   });
+
+  it('persists identities learned from request events', () => {
+    const dbPath = tempDbPath('request-events');
+
+    {
+      const qqInfo = new QQInfo(SELF_UIN);
+      const identity = new IdentityService(qqInfo, dbPath);
+      identity.rememberRequestIdentity({
+        uid: 'u_friend_request',
+        uin: 55555,
+        source: 'friend_request',
+      });
+      identity.rememberRequestIdentity({
+        groupId: GROUP_ID,
+        uid: 'u_group_request',
+        uin: 66666,
+        source: 'group_request',
+      });
+      identity.close();
+    }
+
+    {
+      const qqInfo = new QQInfo(SELF_UIN);
+      const identity = new IdentityService(qqInfo, dbPath);
+
+      expect(identity.findUidByUin(55555)).toBe('u_friend_request');
+      expect(identity.findUinByUid('u_friend_request')).toBe(55555);
+      expect(qqInfo.findGroup(GROUP_ID)?.groupId).toBe(GROUP_ID);
+      expect(identity.findUidByUin(66666)).toBe('u_group_request');
+
+      identity.close();
+    }
+  });
 });

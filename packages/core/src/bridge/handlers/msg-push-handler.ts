@@ -651,6 +651,7 @@ export function parseMsgPush(pkt: PacketInfo, qqInfo: QQInfo): QQEventVariant[] 
         kind: 'group_invite', time: timestamp, selfUin,
         groupId: join.groupUin ?? 0,
         fromUin: resolveUidToUin(qqInfo, join.groupUin ?? 0, join.targetUid ?? '', fromUin),
+        fromUid: join.targetUid ?? '',
         subType: 'add', message: '',
         flag: 'add:' + (join.groupUin ?? 0) + ':' + (join.targetUid ?? ''),
       };
@@ -665,6 +666,7 @@ export function parseMsgPush(pkt: PacketInfo, qqInfo: QQInfo): QQEventVariant[] 
         kind: 'group_invite', time: timestamp, selfUin,
         groupId: inner.groupUin ?? 0,
         fromUin: resolveUidToUin(qqInfo, inner.groupUin ?? 0, inner.invitorUid ?? '', fromUin),
+        fromUid: inner.invitorUid ?? '',
         subType: 'invite', message: '',
         flag: 'invite:' + (inner.groupUin ?? 0) + ':' + (inner.invitorUid ?? ''),
       };
@@ -678,6 +680,7 @@ export function parseMsgPush(pkt: PacketInfo, qqInfo: QQInfo): QQEventVariant[] 
         kind: 'group_invite', time: timestamp, selfUin,
         groupId: invite.groupUin ?? 0,
         fromUin: resolveUidToUin(qqInfo, invite.groupUin ?? 0, invite.invitorUid ?? '', fromUin),
+        fromUid: invite.invitorUid ?? '',
         subType: 'invite', message: '',
         flag: 'invite:' + (invite.groupUin ?? 0) + ':' + (invite.invitorUid ?? ''),
       };
@@ -693,6 +696,7 @@ export function parseMsgPush(pkt: PacketInfo, qqInfo: QQInfo): QQEventVariant[] 
           const ev: FriendRequestEvent = {
             kind: 'friend_request', time: timestamp, selfUin,
             fromUin: resolveUidToUin(qqInfo, 0, sourceUid, fromUin),
+            fromUid: sourceUid,
             message: request.info.message ?? '', flag: sourceUid,
           };
           return [ev];
