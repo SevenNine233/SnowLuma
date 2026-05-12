@@ -2,31 +2,31 @@
 // into bridge events. Port of src/bridge/src/handlers/msg_push_handler.h/.cpp
 
 import { inflateSync } from 'zlib';
-import { protoDecode } from '../../protobuf/decode';
-import { WireMessage } from '../../protobuf/wire';
-import { PushMsgSchema } from '../proto/message';
+import { protoDecode } from '../protobuf/decode';
+import { WireMessage } from '../protobuf/wire';
+import { PushMsgSchema } from './proto/message';
 import {
   MentionExtraSchema, QFaceExtraSchema, QSmallFaceExtraSchema,
   MsgInfoSchema, GroupFileExtraSchema, NotOnlineImageSchema,
-} from '../proto/element';
-import { FileExtraSchema } from '../proto/message';
+} from './proto/element';
+import { FileExtraSchema } from './proto/message';
 import {
   GroupChangeSchema, GroupAdminSchema, GroupJoinSchema,
   GroupInvitationSchema, GroupInviteSchema,
   FriendRequestSchema, FriendRecallSchema,
   GroupMuteSchema, NotifyMessageBodySchema,
   GeneralGrayTipInfoSchema, OperatorInfoSchema,
-} from '../proto/notify';
-import type { QQInfo } from '../qq-info';
-import type { PacketInfo } from '../../protocol/types';
+} from './proto/notify';
+import type { QQInfo } from './qq-info';
+import type { PacketInfo } from '../protocol/types';
 import type {
   QQEventVariant, MessageElement,
   FriendMessage, GroupMessage, TempMessage,
   GroupMemberJoin, GroupMemberLeave, GroupMuteEvent, GroupAdminEvent,
   FriendRecall, GroupRecallEvent, FriendRequestEvent, GroupInviteEvent,
   FriendPokeEvent, GroupPokeEvent, GroupEssenceEvent,
-} from '../events';
-import type { ProtoDecoded, ProtoSchema } from '../../protobuf/decode';
+} from './events';
+import type { ProtoDecoded, ProtoSchema } from '../protobuf/decode';
 
 // --- PkgType enum ---
 const enum PkgType {
@@ -147,7 +147,7 @@ function unwrapGroupNotifyPayload(content: Uint8Array): Uint8Array | null {
 
 // --- Element conversion ---
 
-type ElemDecoded = ProtoDecoded<typeof import('../proto/element').ElemSchema>;
+type ElemDecoded = ProtoDecoded<typeof import('./proto/element').ElemSchema>;
 
 function convertElements(elems: ElemDecoded[]): MessageElement[] {
   const result: MessageElement[] = [];
@@ -497,7 +497,7 @@ function convertElements(elems: ElemDecoded[]): MessageElement[] {
 }
 
 function extractRichtextExtras(
-  rt: ProtoDecoded<typeof import('../proto/message').RichTextSchema>,
+  rt: ProtoDecoded<typeof import('./proto/message').RichTextSchema>,
   elements: MessageElement[],
   isGroup = false
 ): void {

@@ -6,8 +6,8 @@
 import type { Bridge } from '../bridge';
 import { gunzipSync, gzipSync } from 'zlib';
 import { protoDecode, protoEncode } from '../../protobuf/decode';
-import { buildSendElems } from '../builders/element-builder';
-import { parseMsgPush } from '../handlers/msg-push-handler';
+import { buildSendElems } from '../element-builder';
+import { parseMsgPush } from '../msg-push-handler';
 import type { ForwardNodePayload } from '../events';
 import type { PacketInfo } from '../../protocol/types';
 import {

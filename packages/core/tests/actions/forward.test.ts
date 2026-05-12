@@ -10,7 +10,7 @@ vi.mock('../../src/bridge/bridge-oidb', () => ({
 // element-builder reaches into protoEncode with element-specific schemas
 // that we don't want to construct manually in tests; stub it to return
 // a benign placeholder.
-vi.mock('../../src/bridge/builders/element-builder', () => ({
+vi.mock('../../src/bridge/element-builder', () => ({
   buildSendElems: vi.fn(async () => []),
 }));
 

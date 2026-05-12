@@ -6,10 +6,10 @@ import type { PacketInfo } from '../protocol/types';
 import type { ForwardNodePayload, QQEventVariant, MessageElement } from './events';
 import type { FriendInfo, QQGroupInfo, GroupMemberInfo, UserProfileInfo, GroupRequestInfo } from './qq-info';
 import { QQInfo } from './qq-info';
-import { MSG_PUSH_CMD, parseMsgPush } from './handlers/msg-push-handler';
+import { MSG_PUSH_CMD, parseMsgPush } from './msg-push-handler';
 import type { PacketSender, SendPacketResult } from '../protocol/packet-sender';
 import { protoEncode, protoDecode } from '../protobuf/decode';
-import { buildSendElems } from './builders/element-builder';
+import { buildSendElems } from './element-builder';
 import { IdentityService } from './identity-service';
 import { createLogger } from '../utils/logger';
 import {
