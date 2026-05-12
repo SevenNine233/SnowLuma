@@ -2,7 +2,7 @@ import path from 'path';
 import type { Bridge } from '../bridge/bridge';
 import type { QQInfo } from '../bridge/qq-info';
 import { ApiHandler } from './api-handler';
-import { EventConverter } from './event-converter';
+import type { ConverterContext } from './event-converter';
 import { MessageStore } from './message-store';
 import { MediaStore } from './media-store';
 import { RKeyCache } from './instance-rkey';
@@ -28,7 +28,7 @@ export class OneBotInstance {
   readonly qqInfo: QQInfo;
   private readonly bridge: Bridge;
   private readonly apiHandler: ApiHandler;
-  private readonly eventConverter: EventConverter;
+  private readonly converterCtx: ConverterContext;
   private readonly messageStore: MessageStore;
   private readonly mediaStore: MediaStore;
   private readonly networkManager: OneBotNetworkManager;
@@ -46,61 +46,87 @@ export class OneBotInstance {
     this.qqInfo = qqInfo;
     this.bridge = bridge;
 
-    this.eventConverter = new EventConverter();
     this.rkeyCache = new RKeyCache();
     this.mediaStore = new MediaStore(path.join('data', this.uin, 'media.db'));
-    this.eventConverter.setImageUrlResolver((element, isGroup) =>
-      this.rkeyCache.resolveImageUrl(this.bridge, element, isGroup));
-    this.eventConverter.setMediaUrlResolver(async (element, isGroup, sessionId) => {
-      // Fetch URL from bridge if not already present
-      if (!element.url) {
-        try {
-          if (element.type === 'file' && element.fileId) {
-            element.url = isGroup
-              ? await this.bridge.fetchGroupFileUrl(sessionId, element.fileId)
-              : element.fileHash
-                ? await this.bridge.fetchPrivateFileUrl(sessionId, element.fileId, element.fileHash)
-                : '';
-          } else if ((element.type === 'record' || element.type === 'video') && element.mediaNode) {
-            if (isGroup) {
-              element.url = element.type === 'record'
-                ? await this.bridge.fetchGroupPttUrlByNode(sessionId, element.mediaNode)
-                : await this.bridge.fetchGroupVideoUrlByNode(sessionId, element.mediaNode);
-            } else {
-              element.url = element.type === 'record'
-                ? await this.bridge.fetchPrivatePttUrlByNode(element.mediaNode)
-                : await this.bridge.fetchPrivateVideoUrlByNode(element.mediaNode);
+    this.messageStore = new MessageStore(path.join('data', this.uin, 'messages.json'));
+
+    // Build the converter context once. The four callbacks below used
+    // to live as setter-injected fields on an EventConverter class; the
+    // converter is now a free function family that takes this context.
+    this.converterCtx = {
+      selfId: parseInt(this.uin, 10) || 0,
+      imageUrlResolver: (element, isGroup) =>
+        this.rkeyCache.resolveImageUrl(this.bridge, element, isGroup),
+      mediaUrlResolver: async (element, isGroup, sessionId) => {
+        // Fetch URL from the bridge if not already present on the element.
+        if (!element.url) {
+          try {
+            if (element.type === 'file' && element.fileId) {
+              element.url = isGroup
+                ? await this.bridge.fetchGroupFileUrl(sessionId, element.fileId)
+                : element.fileHash
+                  ? await this.bridge.fetchPrivateFileUrl(sessionId, element.fileId, element.fileHash)
+                  : '';
+            } else if ((element.type === 'record' || element.type === 'video') && element.mediaNode) {
+              if (isGroup) {
+                element.url = element.type === 'record'
+                  ? await this.bridge.fetchGroupPttUrlByNode(sessionId, element.mediaNode)
+                  : await this.bridge.fetchGroupVideoUrlByNode(sessionId, element.mediaNode);
+              } else {
+                element.url = element.type === 'record'
+                  ? await this.bridge.fetchPrivatePttUrlByNode(element.mediaNode)
+                  : await this.bridge.fetchPrivateVideoUrlByNode(element.mediaNode);
+              }
             }
-          }
-        } catch { /* best-effort */ }
-      }
-      // Then apply RKey if needed
-      return this.rkeyCache.resolveMediaUrl(this.bridge, element, isGroup);
-    });
-    this.eventConverter.setMediaSegmentSink((mediaType, element, data, isGroup, sessionId) => {
-      const url = typeof data.url === 'string' ? data.url : '';
-      const file = typeof data.file === 'string' ? data.file : '';
-      if (mediaType === 'image') {
-        this.mediaStore.rememberImage({
-          file: file || element.fileId || '',
-          url,
-          fileSize: element.fileSize ?? 0,
-          fileName: element.fileId ?? '',
-          subType: element.subType ?? 0,
-          summary: element.summary ?? '',
-          imageUrl: element.imageUrl ?? '',
-          isGroup,
-          sessionId,
-          md5Hex: element.md5Hex,
-          sha1Hex: element.sha1Hex,
-          width: element.width,
-          height: element.height,
-          picFormat: element.picFormat,
-        });
-        return;
-      }
-      if (mediaType === 'record') {
-        this.mediaStore.rememberRecord({
+          } catch { /* best-effort */ }
+        }
+        // Then apply the cached RKey if the URL needs one.
+        return this.rkeyCache.resolveMediaUrl(this.bridge, element, isGroup);
+      },
+      messageIdResolver: (isGroup, sessionId, sequence, eventName) =>
+        hashMessageIdInt32(sequence, sessionId, eventName || (isGroup ? GROUP_MESSAGE_EVENT : PRIVATE_MESSAGE_EVENT)),
+      mediaSegmentSink: (mediaType, element, data, isGroup, sessionId) => {
+        const url = typeof data.url === 'string' ? data.url : '';
+        const file = typeof data.file === 'string' ? data.file : '';
+        if (mediaType === 'image') {
+          this.mediaStore.rememberImage({
+            file: file || element.fileId || '',
+            url,
+            fileSize: element.fileSize ?? 0,
+            fileName: element.fileId ?? '',
+            subType: element.subType ?? 0,
+            summary: element.summary ?? '',
+            imageUrl: element.imageUrl ?? '',
+            isGroup,
+            sessionId,
+            md5Hex: element.md5Hex,
+            sha1Hex: element.sha1Hex,
+            width: element.width,
+            height: element.height,
+            picFormat: element.picFormat,
+          });
+          return;
+        }
+        if (mediaType === 'record') {
+          this.mediaStore.rememberRecord({
+            file: file || element.fileName || element.fileId || '',
+            fileId: element.fileId ?? '',
+            url,
+            fileSize: element.fileSize ?? 0,
+            fileName: element.fileName ?? '',
+            duration: element.duration ?? 0,
+            fileHash: element.fileHash ?? '',
+            mediaNode: element.mediaNode,
+            isGroup,
+            sessionId,
+            md5Hex: element.md5Hex,
+            sha1Hex: element.sha1Hex,
+            voiceFormat: element.voiceFormat,
+          });
+          return;
+        }
+        // video
+        this.mediaStore.rememberVideo({
           file: file || element.fileName || element.fileId || '',
           fileId: element.fileId ?? '',
           url,
@@ -113,32 +139,12 @@ export class OneBotInstance {
           sessionId,
           md5Hex: element.md5Hex,
           sha1Hex: element.sha1Hex,
-          voiceFormat: element.voiceFormat,
+          width: element.width,
+          height: element.height,
+          videoFormat: element.videoFormat,
         });
-        return;
-      }
-      // video
-      this.mediaStore.rememberVideo({
-        file: file || element.fileName || element.fileId || '',
-        fileId: element.fileId ?? '',
-        url,
-        fileSize: element.fileSize ?? 0,
-        fileName: element.fileName ?? '',
-        duration: element.duration ?? 0,
-        fileHash: element.fileHash ?? '',
-        mediaNode: element.mediaNode,
-        isGroup,
-        sessionId,
-        md5Hex: element.md5Hex,
-        sha1Hex: element.sha1Hex,
-        width: element.width,
-        height: element.height,
-        videoFormat: element.videoFormat,
-      });
-    });
-    this.eventConverter.setMessageIdResolver((isGroup, sessionId, sequence, eventName) =>
-      hashMessageIdInt32(sequence, sessionId, eventName || (isGroup ? GROUP_MESSAGE_EVENT : PRIVATE_MESSAGE_EVENT)));
-    this.messageStore = new MessageStore(path.join('data', this.uin, 'messages.json'));
+      },
+    };
 
     // Shared instance context. Only carries fields that are actually read
     // through it — api handler and network manager stay as direct fields on
@@ -150,7 +156,7 @@ export class OneBotInstance {
       bridge: this.bridge,
       messageStore: this.messageStore,
       mediaStore: this.mediaStore,
-      eventConverter: this.eventConverter,
+      converterCtx: this.converterCtx,
       config,
       musicSignUrl: config.musicSignUrl,
       cacheMessageMeta: (messageId, meta) => this.cacheMessageMeta(messageId, meta),

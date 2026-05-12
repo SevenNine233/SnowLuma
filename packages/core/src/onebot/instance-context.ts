@@ -2,7 +2,7 @@ import type { WebHonorType } from '@/bridge/web/group-honor';
 import type { Bridge } from '../bridge/bridge';
 import type { QQInfo } from '../bridge/qq-info';
 import type { ApiActionContext } from './api-handler';
-import type { EventConverter } from './event-converter';
+import type { ConverterContext } from './event-converter';
 import type { MediaStore } from './media-store';
 import type { MessageStore } from './message-store';
 import type { JsonObject, MessageMeta, OneBotConfig } from './types';
@@ -62,7 +62,7 @@ export interface OneBotInstanceContext {
   messageStore: MessageStore;
   mediaStore: MediaStore;
 
-  eventConverter: EventConverter;
+  converterCtx: ConverterContext;
 
   config: OneBotConfig;
   musicSignUrl?: string;
