@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import type { NtqqHandler } from '../protocol/ntqq-handler';
 import type { PacketSender } from '../protocol/packet-sender';
+import type { PacketSink } from '../protocol/types';
 import { createLogger, type Logger } from '../utils/logger';
 import { HookPacketClient } from './hook-packet-client';
 import type { HookInjectResult } from './injector';
@@ -16,8 +16,10 @@ export type HookSessionDeps = {
   /** Sync fast-path check used by load() to skip re-injection when a
    * prior SnowLuma run left a working pipe behind. */
   pipeWatcher: { isPipeLive: (pid: number) => boolean };
-  /** Optional packet sink. If provided, parsed packets are forwarded here. */
-  ntqq?: NtqqHandler;
+  /** Sink for parsed packets. Called with the BridgeManager-shaped
+   * PacketInfo for every packet received while logged in. If omitted,
+   * packets are dropped (useful in unit tests that don't care). */
+  onPacket?: PacketSink;
   log?: Logger;
 };
 
@@ -44,7 +46,7 @@ export class HookSession extends EventEmitter {
   private readonly injector: HookSessionDeps['injector'];
   private readonly makeClient: HookSessionDeps['makeClient'];
   private readonly pipeWatcher: HookSessionDeps['pipeWatcher'];
-  private readonly ntqq: NtqqHandler | null;
+  private readonly onPacket: PacketSink | null;
   private readonly log: Logger;
 
   private _status: HookProcessStatus = 'available';
@@ -70,7 +72,7 @@ export class HookSession extends EventEmitter {
     this.injector = deps.injector;
     this.makeClient = deps.makeClient;
     this.pipeWatcher = deps.pipeWatcher;
-    this.ntqq = deps.ntqq ?? null;
+    this.onPacket = deps.onPacket ?? null;
     this.log = deps.log ?? createLogger('HookSession');
   }
 
@@ -395,7 +397,20 @@ export class HookSession extends EventEmitter {
     if (!this.loggedIn) return;
     const uin = packet.uin || this._uin;
     if (!isRealUin(uin)) return;
-    this.ntqq?.onHookPacket(this.pid, { ...packet, uin });
+    if (!this.onPacket) return;
+    // Re-shape the hook-client wire packet into BridgeManager's PacketInfo
+    // shape. Used to live in the deleted NtqqHandler.onHookPacket; field
+    // renaming was that module's entire purpose, so it lives at the source
+    // now (no need for a single-listener event-emitter in between).
+    this.onPacket({
+      pid: this.pid,
+      uin,
+      serviceCmd: packet.cmd,
+      seqId: packet.seq,
+      retCode: packet.error,
+      fromClient: false,
+      body: Buffer.from(packet.body),
+    });
   }
 
   private setStatus(status: HookProcessStatus, error: string): void {

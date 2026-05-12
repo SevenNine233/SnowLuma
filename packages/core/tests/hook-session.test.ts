@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'events';
 import { HookSession } from '../src/hook/hook-session';
 import type { ManualMapHandle } from '../src/hook/injector';
-import type { QqHookClient } from '../src/hook/qq-hook-client';
+import type { QqHookClient, QqHookPacket } from '../src/hook/qq-hook-client';
+import type { PacketSink } from '../src/protocol/types';
 
 const DUMMY_HANDLE: ManualMapHandle = { base: 0n, entry: 0n, exceptionTable: 0n, size: 0 };
 
@@ -30,9 +31,18 @@ class FakeClient extends EventEmitter {
     this.loginState = { loggedIn: true, uin, uinNumber: BigInt(uin) };
     this.emit('loginState', { ...this.loginState });
   }
+
+  firePacket(packet: QqHookPacket): void {
+    this.emit('packet', packet);
+  }
 }
 
-function makeSession(opts: { pid?: number; pipeLive?: boolean; clientFailsConnect?: boolean } = {}) {
+function makeSession(opts: {
+  pid?: number;
+  pipeLive?: boolean;
+  clientFailsConnect?: boolean;
+  onPacket?: PacketSink;
+} = {}) {
   const pid = opts.pid ?? 1234;
   let pipeLive = opts.pipeLive ?? false;
   const clients: FakeClient[] = [];
@@ -51,13 +61,14 @@ function makeSession(opts: { pid?: number; pipeLive?: boolean; clientFailsConnec
       return c as unknown as QqHookClient;
     },
     pipeWatcher: { isPipeLive: () => pipeLive },
+    onPacket: opts.onPacket,
   });
 
   return {
     session,
     injector,
     clients,
-    currentClient: () => clients[clients.length - 1],
+    currentClient: () => clients[clients.length - 1]!,
     setPipeLive: (v: boolean) => { pipeLive = v; },
   };
 }
@@ -305,5 +316,103 @@ describe('HookSession — process gone', () => {
     await flush();
 
     expect(events).toEqual(['disposed']);
+  });
+});
+
+describe('HookSession — packet forwarding', () => {
+  // These tests cover the field-rename + filter logic that used to live
+  // inside the deleted NtqqHandler.onHookPacket. Inlining it here means
+  // we can exercise the transformation with a plain vi.fn() sink, no
+  // event-emitter machinery required.
+
+  it('forwards parsed packets to onPacket sink with PacketInfo shape', async () => {
+    const onPacket = vi.fn();
+    const ctx = makeSession({ pipeLive: true, onPacket });
+    await ctx.session.load();
+    ctx.session.onPipeUp();
+    await flush();
+    ctx.currentClient().fireLogin('10001');
+
+    ctx.currentClient().firePacket({
+      seq: 42,
+      error: 0,
+      cmd: 'trpc.msg.olpush.OlPushService.MsgPush',
+      uin: '10001',
+      body: Buffer.from([0x01, 0x02, 0x03]),
+    });
+
+    expect(onPacket).toHaveBeenCalledOnce();
+    const pkt = onPacket.mock.calls[0]![0];
+    expect(pkt).toMatchObject({
+      pid: 1234,
+      uin: '10001',
+      serviceCmd: 'trpc.msg.olpush.OlPushService.MsgPush',
+      seqId: 42,
+      retCode: 0,
+      fromClient: false,
+    });
+    expect(Buffer.isBuffer(pkt.body)).toBe(true);
+    expect([...pkt.body]).toEqual([1, 2, 3]);
+  });
+
+  it('falls back to session uin when packet.uin is empty', async () => {
+    const onPacket = vi.fn();
+    const ctx = makeSession({ pipeLive: true, onPacket });
+    await ctx.session.load();
+    ctx.session.onPipeUp();
+    await flush();
+    ctx.currentClient().fireLogin('10001');
+
+    ctx.currentClient().firePacket({
+      seq: 1, error: 0, cmd: 'foo', uin: '', body: Buffer.alloc(0),
+    });
+
+    expect(onPacket.mock.calls[0]![0].uin).toBe('10001');
+  });
+
+  it('drops packets received before login', async () => {
+    const onPacket = vi.fn();
+    const ctx = makeSession({ pipeLive: true, onPacket });
+    await ctx.session.load();
+    ctx.session.onPipeUp();
+    await flush();
+    // No login fired yet.
+
+    ctx.currentClient().firePacket({
+      seq: 1, error: 0, cmd: 'foo', uin: '10001', body: Buffer.alloc(0),
+    });
+
+    expect(onPacket).not.toHaveBeenCalled();
+  });
+
+  it('drops packets whose uin is non-real ("0" / too short / non-numeric)', async () => {
+    const onPacket = vi.fn();
+    const ctx = makeSession({ pipeLive: true, onPacket });
+    await ctx.session.load();
+    ctx.session.onPipeUp();
+    await flush();
+    ctx.currentClient().fireLogin('10001');
+
+    // Packet uin '0' falls back to session uin '10001' — that one passes.
+    // Force a bad uin via the packet AND null out session uin by simulating
+    // a logout? Simpler: send a packet with uin '42' (numeric but <5 chars).
+    ctx.currentClient().firePacket({
+      seq: 1, error: 0, cmd: 'foo', uin: '42', body: Buffer.alloc(0),
+    });
+
+    expect(onPacket).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when no onPacket sink is provided', async () => {
+    const ctx = makeSession({ pipeLive: true });   // no onPacket
+    await ctx.session.load();
+    ctx.session.onPipeUp();
+    await flush();
+    ctx.currentClient().fireLogin('10001');
+
+    // Should not throw / crash.
+    ctx.currentClient().firePacket({
+      seq: 1, error: 0, cmd: 'foo', uin: '10001', body: Buffer.from([7]),
+    });
   });
 });

@@ -1,4 +1,3 @@
-import { NtqqHandler } from './protocol/ntqq-handler';
 import { BridgeManager } from './bridge/manager';
 import { OneBotManager } from './onebot/manager';
 import { loadRuntimeConfig } from './common/runtime';
@@ -11,13 +10,13 @@ const log = createLogger('App');
 async function main() {
   log.info('SnowLuma starting');
 
-  const ntqq = new NtqqHandler();
   const bridgeManager = new BridgeManager();
   const oneBotManager = new OneBotManager();
-  const hookManager = new HookManager({ ntqq, bridgeManager });
+  // HookManager defaults its packet sink to bridgeManager.onPacket, so
+  // every parsed hook packet reaches the per-UIN bridge dispatcher with
+  // no intermediate layer.
+  const hookManager = new HookManager({ bridgeManager });
 
-  // Bind bridge manager to NTQQ handler (receives all parsed packets)
-  bridgeManager.bind(ntqq);
   oneBotManager.bind(bridgeManager);
 
   if (

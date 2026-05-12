@@ -1,5 +1,5 @@
 import type { BridgeManager } from '../bridge/manager';
-import type { NtqqHandler } from '../protocol/ntqq-handler';
+import type { PacketSink } from '../protocol/types';
 import { createLogger, type Logger } from '../utils/logger';
 import {
   injectHookProcess,
@@ -16,8 +16,11 @@ export type { HookProcessInfo, HookProcessStatus } from './types';
 export type { HookProcessBaseInfo } from './injector';
 
 export type HookManagerDeps = {
-  ntqq: NtqqHandler;
   bridgeManager: BridgeManager;
+  /** Sink for parsed packets from any live HookSession. Defaults to
+   * `bridgeManager.onPacket` — every packet flows straight into the
+   * per-UIN bridge dispatcher with no intermediate event emitter. */
+  onPacket?: PacketSink;
   /** Native injector entrypoints. Defaults to the real native addon. */
   injector?: HookSessionDeps['injector'];
   /** Hook pipe-client factory. Defaults to `new QqHookClient(pid)`. */
@@ -47,8 +50,8 @@ export type HookManagerDeps = {
  * real QQ.exe or a native addon.
  */
 export class HookManager {
-  private readonly ntqq: NtqqHandler;
   private readonly bridgeManager: BridgeManager;
+  private readonly onPacket: PacketSink;
   private readonly injector: HookSessionDeps['injector'];
   private readonly makeClient: HookSessionDeps['makeClient'];
   private readonly pipeWatcher: PipeWatcher;
@@ -61,8 +64,8 @@ export class HookManager {
   private disposed = false;
 
   constructor(deps: HookManagerDeps) {
-    this.ntqq = deps.ntqq;
     this.bridgeManager = deps.bridgeManager;
+    this.onPacket = deps.onPacket ?? ((pkt) => deps.bridgeManager.onPacket(pkt));
     this.log = deps.log ?? createLogger('Hook');
 
     this.injector = deps.injector ?? {
@@ -194,7 +197,7 @@ export class HookManager {
       injector: this.injector,
       makeClient: this.makeClient,
       pipeWatcher: this.pipeWatcher,
-      ntqq: this.ntqq,
+      onPacket: this.onPacket,
       log: this.log,
     });
     session.attachProcessInfo({ name: defaultProcessName() });
