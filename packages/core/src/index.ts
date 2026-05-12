@@ -14,7 +14,7 @@ async function main() {
   const ntqq = new NtqqHandler();
   const bridgeManager = new BridgeManager();
   const oneBotManager = new OneBotManager();
-  const hookManager = new HookManager(ntqq, bridgeManager);
+  const hookManager = new HookManager({ ntqq, bridgeManager });
 
   // Bind bridge manager to NTQQ handler (receives all parsed packets)
   bridgeManager.bind(ntqq);
