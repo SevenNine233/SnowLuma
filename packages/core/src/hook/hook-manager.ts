@@ -31,6 +31,10 @@ export type HookManagerDeps = {
   watcherIntervalMs?: number;
   /** Native process lister used by `listProcesses()`. Defaults to the native addon. */
   listProcesses?: () => HookProcessBaseInfo[];
+  /** When true, every newly-discovered QQ process is auto-injected (fires
+   * `loadProcess(pid)` from the watcher's 'process-discovered' handler).
+   * Failed loads are logged and leave the session in the 'error' state. */
+  autoLoadOnDiscovery?: boolean;
   log?: Logger;
 };
 
@@ -57,6 +61,7 @@ export class HookManager {
   private readonly pipeWatcher: PipeWatcher;
   private readonly ownsPipeWatcher: boolean;
   private readonly listProcessesNative: () => HookProcessBaseInfo[];
+  private readonly autoLoadOnDiscovery: boolean;
   private readonly log: Logger;
   private readonly sessions = new Map<number, HookSession>();
   private readonly startPromise: Promise<void>;
@@ -77,6 +82,7 @@ export class HookManager {
     };
     this.makeClient = deps.makeClient ?? ((pid: number) => new QqHookClient(pid));
     this.listProcessesNative = deps.listProcesses ?? listHookProcesses;
+    this.autoLoadOnDiscovery = deps.autoLoadOnDiscovery ?? false;
 
     if (deps.pipeWatcher) {
       this.pipeWatcher = deps.pipeWatcher;
@@ -159,6 +165,15 @@ export class HookManager {
       if (this.disposed) return;
       const session = this.ensureSession(info.pid);
       session.attachProcessInfo(info);
+      // Headless/Docker deployments enable autoLoadOnDiscovery so QQ gets
+      // injected without a human clicking "Load" in WebUI. Fire-and-forget:
+      // failures are already captured inside loadInternal and surfaced via
+      // the session's status field.
+      if (this.autoLoadOnDiscovery) {
+        void session.load().catch((err) => {
+          this.log.warn('auto-load failed: PID=%d err=%s', info.pid, errMsg(err));
+        });
+      }
     });
     this.pipeWatcher.on('process-gone', (pid: number) => {
       if (this.disposed) return;
