@@ -36,20 +36,58 @@ export const PRIVATE_PTT_CMD_ID = 1007;
 export const GROUP_PTT_CMD_ID = 1008;
 
 interface PttPayload {
-  /** Silk bytes that get uploaded to highway. */
+  /** Silk bytes that get uploaded to highway. Empty when fast-only forward. */
   bytes: Uint8Array;
   md5: Uint8Array;
   sha1: Uint8Array;
   md5Hex: string;
   sha1Hex: string;
   fileName: string;
+  fileSize: number;
   /** Whole seconds, >= 1. */
   duration: number;
+  voiceFormat: number;
+  /** When true, `bytes` is empty and the upload must fast-path or throw. */
+  fastOnly: boolean;
   /** Cleanup hooks invoked once the OIDB request + highway upload finish. */
   cleanups: Array<() => void>;
 }
 
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.length % 2 === 0 ? hex : '0' + hex;
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(clean.substring(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+function pttPayloadFromFingerprint(element: MessageElement): PttPayload {
+  return {
+    bytes: new Uint8Array(0),
+    md5: hexToBytes(element.md5Hex ?? ''),
+    sha1: hexToBytes(element.sha1Hex ?? ''),
+    md5Hex: element.md5Hex ?? '',
+    sha1Hex: element.sha1Hex ?? '',
+    fileName: element.fileName || `${element.md5Hex ?? 'record'}.amr`,
+    fileSize: element.fileSize ?? 0,
+    duration: element.duration ?? 1,
+    // Voice format: 1 = silk (NTV2 standard). If the original carried a
+    // different voiceFormat we honour it; the legacy ptt path on NTQQ uses 1.
+    voiceFormat: element.voiceFormat || 1,
+    fastOnly: true,
+    cleanups: [],
+  };
+}
+
 async function loadPtt(element: MessageElement, tempDir: string): Promise<PttPayload> {
+  if (element.noByteFallback) {
+    if (!element.md5Hex || !element.sha1Hex) {
+      throw new Error('record fast-upload requires md5Hex + sha1Hex');
+    }
+    return pttPayloadFromFingerprint(element);
+  }
+
   const source = element.url || element.fileId || '';
   if (!source) throw new Error('record source is empty');
 
@@ -97,7 +135,10 @@ async function loadPtt(element: MessageElement, tempDir: string): Promise<PttPay
       md5Hex: hashes.md5Hex,
       sha1Hex: hashes.sha1Hex,
       fileName: `${hashes.md5Hex}.amr`,
+      fileSize: silkBytes.length,
       duration: silk.duration,
+      voiceFormat: 1,
+      fastOnly: false,
       cleanups: [...cleanups],
     };
   } catch (err) {
@@ -136,12 +177,11 @@ async function startPttUpload(
     upload: {
       uploadInfo: [{
         fileInfo: {
-          fileSize: ptt.bytes.length,
+          fileSize: ptt.fileSize,
           fileHash: ptt.md5Hex,
           fileSha1: ptt.sha1Hex,
           fileName: ptt.fileName,
-          // type=3 voice, voiceFormat=1 (silk).
-          type: { type: 3, picFormat: 0, videoFormat: 0, voiceFormat: 1 },
+          type: { type: 3, picFormat: 0, videoFormat: 0, voiceFormat: ptt.voiceFormat },
           width: 0,
           height: 0,
           time: ptt.duration,
@@ -239,6 +279,9 @@ export async function uploadPttMsgInfo(
     // returned MsgInfo and trust the dedupe.
     const uKey = upload?.uKey ?? '';
     if (uKey && upload?.msgInfo) {
+      if (ptt.fastOnly) {
+        throw new Error('record fast-upload not available (server requires bytes)');
+      }
       log.debug('highway upload: bytes=%d md5=%s scene=%s', ptt.bytes.length, ptt.md5Hex, isGroup ? 'group' : 'c2c');
       const session = await fetchHighwaySession(bridge);
       const extend = buildHighwayExtend(uKey, upload.msgInfo, upload.ipv4s ?? [], ptt.sha1);

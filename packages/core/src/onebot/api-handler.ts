@@ -101,6 +101,7 @@ export interface ApiActionContext {
   sendPrivateForwardMsg?: (userId: number, messages: JsonValue) => Promise<{ messageId: number; forwardId: string }>;
   sendForwardMsg?: (messages: JsonValue) => Promise<{ forwardId: string }>;
   getForwardMsg?: (resId: string) => Promise<JsonObject[]>;
+  forwardSingleMsg?: (messageId: number, target: { groupId?: number; userId?: number }) => Promise<{ messageId: number }>;
   // Extended NapCat-compatible
   setFriendRemark?: (userId: number, remark: string) => Promise<void>;
   setGroupRemark?: (groupId: number, remark: string) => Promise<void>;

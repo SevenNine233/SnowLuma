@@ -235,6 +235,152 @@ export async function uploadForwardMessage(
   return { forwardId };
 }
 
+/**
+ * Forward a previously-received message to another peer.
+ *
+ * We look up the cached event + media fingerprints, then re-send via the
+ * normal send pipeline with `noByteFallback` set on media elements so the
+ * upload modules fast-path through OIDB md5/sha1 instead of re-downloading
+ * the original CDN bytes. Fails fast if a media segment has no cached
+ * fingerprints or contains a file segment (file forwarding has its own
+ * separate protocol and is not in scope here).
+ */
+export async function forwardSingleMessage(
+  ref: OneBotInstanceContext,
+  messageId: number,
+  target: { groupId?: number; userId?: number },
+): Promise<{ messageId: number }> {
+  if (!target.groupId && !target.userId) {
+    throw new Error('forward target group_id or user_id is required');
+  }
+
+  const event = ref.messageStore.findEvent(messageId);
+  if (!event) throw new Error(`message not found: ${messageId}`);
+
+  const content = (event.message ?? event.raw_message ?? '') as JsonValue;
+  const parsed = await parseMessage(content, false);
+  if (parsed.length === 0) throw new Error('message has no content');
+
+  const elements = parsed.map((el) => enrichForForward(ref, el));
+
+  let receipt;
+  let messageIdOut: number;
+  if (target.groupId) {
+    receipt = await ref.bridge.sendGroupMessage(target.groupId, elements);
+    messageIdOut = hashMessageIdInt32(receipt.sequence, target.groupId, GROUP_MESSAGE_EVENT);
+    ref.cacheMessageMeta(messageIdOut, {
+      isGroup: true,
+      targetId: target.groupId,
+      sequence: receipt.sequence,
+      eventName: GROUP_MESSAGE_EVENT,
+      clientSequence: receipt.clientSequence,
+      random: receipt.random,
+      timestamp: receipt.timestamp,
+    });
+  } else {
+    receipt = await ref.bridge.sendPrivateMessage(target.userId!, elements);
+    messageIdOut = hashMessageIdInt32(receipt.sequence, target.userId!, PRIVATE_MESSAGE_EVENT);
+    ref.cacheMessageMeta(messageIdOut, {
+      isGroup: false,
+      targetId: target.userId!,
+      sequence: receipt.sequence,
+      eventName: PRIVATE_MESSAGE_EVENT,
+      clientSequence: receipt.clientSequence,
+      random: receipt.random,
+      timestamp: receipt.timestamp,
+    });
+  }
+
+  return { messageId: messageIdOut };
+}
+
+function enrichForForward(ref: OneBotInstanceContext, element: MessageElement): MessageElement {
+  // The send path takes care of these as-is; nothing extra to do.
+  if (element.type === 'text' || element.type === 'face' || element.type === 'at'
+    || element.type === 'reply' || element.type === 'json' || element.type === 'xml'
+    || element.type === 'poke' || element.type === 'forward' || element.type === 'mface') {
+    return element;
+  }
+
+  // The `file` segment is its own upload pipeline (FtnUpload / OfflineFile)
+  // and is not supported by the fast-upload forward path.
+  if (element.type === 'file') {
+    throw new Error('forward of file segment is not supported');
+  }
+
+  // For images/records/videos we look up the cached fingerprints by any of
+  // the keys MediaStore aliases under. After parseMessage, the segment's
+  // `data.file` lands on `element.url` for all three types.
+  const lookupKey = element.url || element.fileName || element.fileId || '';
+  if (!lookupKey) {
+    throw new Error(`forward ${element.type} missing cache key`);
+  }
+
+  if (element.type === 'image') {
+    const cached = ref.mediaStore.findImage(lookupKey);
+    if (!cached || !cached.md5Hex || !cached.sha1Hex || !cached.width || !cached.height || !cached.picFormat) {
+      throw new Error('forward image fingerprint not cached (legacy image or expired)');
+    }
+    return {
+      ...element,
+      type: 'image',
+      noByteFallback: true,
+      md5Hex: cached.md5Hex,
+      sha1Hex: cached.sha1Hex,
+      fileSize: cached.fileSize,
+      fileName: cached.fileName,
+      subType: cached.subType,
+      summary: cached.summary,
+      width: cached.width,
+      height: cached.height,
+      picFormat: cached.picFormat,
+    };
+  }
+
+  if (element.type === 'record') {
+    const cached = ref.mediaStore.findRecord(lookupKey);
+    if (!cached || !cached.md5Hex || !cached.sha1Hex) {
+      throw new Error('forward record fingerprint not cached');
+    }
+    return {
+      ...element,
+      type: 'record',
+      noByteFallback: true,
+      md5Hex: cached.md5Hex,
+      sha1Hex: cached.sha1Hex,
+      fileSize: cached.fileSize,
+      fileName: cached.fileName,
+      fileId: cached.fileId,
+      duration: cached.duration,
+      voiceFormat: cached.voiceFormat ?? 1,
+    };
+  }
+
+  if (element.type === 'video') {
+    const cached = ref.mediaStore.findVideo(lookupKey);
+    if (!cached || !cached.md5Hex || !cached.sha1Hex) {
+      throw new Error('forward video fingerprint not cached');
+    }
+    log.warn('video forward uses a fallback thumbnail (original thumb not cached)');
+    return {
+      ...element,
+      type: 'video',
+      noByteFallback: true,
+      md5Hex: cached.md5Hex,
+      sha1Hex: cached.sha1Hex,
+      fileSize: cached.fileSize,
+      fileName: cached.fileName,
+      fileId: cached.fileId,
+      duration: cached.duration,
+      width: cached.width ?? 0,
+      height: cached.height ?? 0,
+      videoFormat: cached.videoFormat ?? 0,
+    };
+  }
+
+  return element;
+}
+
 export async function getForwardMessage(
   ref: OneBotInstanceContext,
   resId: string,

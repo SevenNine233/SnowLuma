@@ -11,7 +11,7 @@ export type MessageIdResolver = (isGroup: boolean, sessionId: number, sequence: 
  * `get_record`) without having to re-scan the persisted message store.
  */
 export type MediaSegmentSink = (
-  mediaType: 'image' | 'record',
+  mediaType: 'image' | 'record' | 'video',
   element: MessageElement,
   data: JsonObject,
   isGroup: boolean,
@@ -414,13 +414,12 @@ async function elementToSegment(
 
   if (element.type === 'video') {
     const url = mediaResolver ? await mediaResolver(element, isGroup, sessionId) : (element.url ?? '');
-    return {
-      type: 'video',
-      data: {
-        file: element.fileName ?? element.fileId ?? '',
-        url,
-      },
+    const data: JsonObject = {
+      file: element.fileName ?? element.fileId ?? '',
+      url,
     };
+    if (mediaSink) mediaSink('video', element, data, isGroup, sessionId);
+    return { type: 'video', data };
   }
 
   if (element.type === 'json') {

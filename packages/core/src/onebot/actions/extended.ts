@@ -623,12 +623,32 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     return okResponse([]);
   });
 
-  h.registerAction('forward_friend_single_msg', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('forward_friend_single_msg', async (params) => {
+    const messageId = asNumber(params.message_id);
+    const userId = asNumber(params.user_id);
+    if (!messageId) return failedResponse(RETCODE.BAD_REQUEST, 'message_id is required');
+    if (!userId) return failedResponse(RETCODE.BAD_REQUEST, 'user_id is required');
+    if (!ctx.forwardSingleMsg) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    try {
+      const result = await ctx.forwardSingleMsg(messageId, { userId });
+      return okResponse({ message_id: result.messageId });
+    } catch (err) {
+      return failedResponse(RETCODE.ACTION_FAILED, err instanceof Error ? err.message : String(err));
+    }
   });
 
-  h.registerAction('forward_group_single_msg', async () => {
-    return failedResponse(RETCODE.ACTION_FAILED, 'not yet implemented');
+  h.registerAction('forward_group_single_msg', async (params) => {
+    const messageId = asNumber(params.message_id);
+    const groupId = asNumber(params.group_id);
+    if (!messageId) return failedResponse(RETCODE.BAD_REQUEST, 'message_id is required');
+    if (!groupId) return failedResponse(RETCODE.BAD_REQUEST, 'group_id is required');
+    if (!ctx.forwardSingleMsg) return failedResponse(RETCODE.ACTION_FAILED, 'not implemented');
+    try {
+      const result = await ctx.forwardSingleMsg(messageId, { groupId });
+      return okResponse({ message_id: result.messageId });
+    } catch (err) {
+      return failedResponse(RETCODE.ACTION_FAILED, err instanceof Error ? err.message : String(err));
+    }
   });
 
   // todo 我的建议是引入数据库api   纯协议我不知道这种api怎么实现，ntQQ在实现这个方法的时候只进行了数据库查询，完全没碰网络

@@ -91,10 +91,34 @@ export class OneBotInstance {
           imageUrl: element.imageUrl ?? '',
           isGroup,
           sessionId,
+          md5Hex: element.md5Hex,
+          sha1Hex: element.sha1Hex,
+          width: element.width,
+          height: element.height,
+          picFormat: element.picFormat,
         });
         return;
       }
-      this.mediaStore.rememberRecord({
+      if (mediaType === 'record') {
+        this.mediaStore.rememberRecord({
+          file: file || element.fileName || element.fileId || '',
+          fileId: element.fileId ?? '',
+          url,
+          fileSize: element.fileSize ?? 0,
+          fileName: element.fileName ?? '',
+          duration: element.duration ?? 0,
+          fileHash: element.fileHash ?? '',
+          mediaNode: element.mediaNode,
+          isGroup,
+          sessionId,
+          md5Hex: element.md5Hex,
+          sha1Hex: element.sha1Hex,
+          voiceFormat: element.voiceFormat,
+        });
+        return;
+      }
+      // video
+      this.mediaStore.rememberVideo({
         file: file || element.fileName || element.fileId || '',
         fileId: element.fileId ?? '',
         url,
@@ -105,6 +129,11 @@ export class OneBotInstance {
         mediaNode: element.mediaNode,
         isGroup,
         sessionId,
+        md5Hex: element.md5Hex,
+        sha1Hex: element.sha1Hex,
+        width: element.width,
+        height: element.height,
+        videoFormat: element.videoFormat,
       });
     });
     this.eventConverter.setMessageIdResolver((isGroup, sessionId, sequence, eventName) =>

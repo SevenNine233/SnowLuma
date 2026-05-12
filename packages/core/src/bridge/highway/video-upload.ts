@@ -52,6 +52,7 @@ const FALLBACK_THUMB = Buffer.from(
 );
 
 interface VideoPayload {
+  /** Video bytes. Empty when fast-only forward. */
   bytes: Uint8Array;
   md5: Uint8Array;
   sha1: Uint8Array;
@@ -60,11 +61,61 @@ interface VideoPayload {
   sha1Hex: string;
   fileName: string;
   filePath: string;
+  fileSize: number;
   width: number;
   height: number;
   duration: number;
+  videoFormat: number;
   thumb: ThumbPayload;
+  /** When true, video bytes are empty; OIDB must fast-upload the video. The
+   *  thumb is always present (computed locally from FALLBACK_THUMB) so the
+   *  thumb subFile may still upload normally. */
+  fastOnly: boolean;
   cleanups: Array<() => void>;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.length % 2 === 0 ? hex : '0' + hex;
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(clean.substring(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+function makeFallbackThumb(): ThumbPayload {
+  const bytes = new Uint8Array(FALLBACK_THUMB);
+  const hashes = computeHashes(bytes);
+  return {
+    bytes,
+    md5: hashes.md5,
+    sha1: hashes.sha1,
+    md5Hex: hashes.md5Hex,
+    sha1Hex: hashes.sha1Hex,
+    width: 1,
+    height: 1,
+  };
+}
+
+function videoPayloadFromFingerprint(element: MessageElement): VideoPayload {
+  return {
+    bytes: new Uint8Array(0),
+    md5: hexToBytes(element.md5Hex ?? ''),
+    sha1: hexToBytes(element.sha1Hex ?? ''),
+    sha1Blocks: [],
+    md5Hex: element.md5Hex ?? '',
+    sha1Hex: element.sha1Hex ?? '',
+    fileName: element.fileName || `${element.md5Hex ?? 'video'}.mp4`,
+    filePath: '',
+    fileSize: element.fileSize ?? 0,
+    width: element.width ?? 0,
+    height: element.height ?? 0,
+    duration: element.duration ?? 1,
+    videoFormat: element.videoFormat ?? 0,
+    thumb: makeFallbackThumb(),
+    fastOnly: true,
+    cleanups: [],
+  };
 }
 
 interface ThumbPayload {
@@ -321,6 +372,13 @@ async function loadThumb(element: MessageElement, videoPath: string): Promise<{
 }
 
 async function loadVideo(element: MessageElement): Promise<VideoPayload> {
+  if (element.noByteFallback) {
+    if (!element.md5Hex || !element.sha1Hex) {
+      throw new Error('video fast-upload requires md5Hex + sha1Hex');
+    }
+    return videoPayloadFromFingerprint(element);
+  }
+
   const tempDir = defaultVideoTempDir();
   const cleanups: Array<() => void> = [];
   fs.mkdirSync(tempDir, { recursive: true });
@@ -344,10 +402,13 @@ async function loadVideo(element: MessageElement): Promise<VideoPayload> {
       sha1Hex: hashes.sha1Hex,
       fileName: staged.fileName || `${hashes.md5Hex}.mp4`,
       filePath: staged.filePath,
+      fileSize: staged.bytes.length,
       width,
       height,
       duration,
+      videoFormat: 0,
       thumb,
+      fastOnly: false,
       cleanups: [...cleanups],
     };
   } catch (err) {
@@ -381,14 +442,14 @@ async function startVideoUpload(
       uploadInfo: [
         {
           fileInfo: {
-            fileSize: video.bytes.length,
+            fileSize: video.fileSize,
             fileHash: video.md5Hex,
             fileSha1: video.sha1Hex,
             fileName: 'nya.mp4',
-            type: { type: 2, picFormat: 0, videoFormat: 0, voiceFormat: 0 },
-            height: 0,
-            width: 0,
-            time: 0,
+            type: { type: 2, picFormat: 0, videoFormat: video.videoFormat, voiceFormat: 0 },
+            height: video.height,
+            width: video.width,
+            time: video.duration,
             original: 0,
           },
           subFileType: 0,
@@ -493,6 +554,9 @@ export async function uploadVideoMsgInfo(
 
     const uKey = upload?.uKey ?? '';
     if (uKey && upload?.msgInfo) {
+      if (video.fastOnly) {
+        throw new Error('video fast-upload not available (server requires bytes)');
+      }
       log.debug('highway video upload: bytes=%d md5=%s scene=%s', video.bytes.length, video.md5Hex, isGroup ? 'group' : 'c2c');
       const extend = buildHighwayExtend(uKey, upload.msgInfo, upload.ipv4s ?? [], video.sha1Blocks, 0);
       const commandId = isGroup ? GROUP_VIDEO_CMD_ID : PRIVATE_VIDEO_CMD_ID;

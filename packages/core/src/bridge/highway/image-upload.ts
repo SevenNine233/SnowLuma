@@ -19,20 +19,57 @@ import {
 } from './highway-client';
 
 interface ImageData {
+  /** Empty when the caller is forwarding from cached fingerprints (no bytes path). */
   bytes: Uint8Array;
   md5: Uint8Array;
   sha1: Uint8Array;
   md5Hex: string;
   sha1Hex: string;
   fileName: string;
+  fileSize: number;
   summary: string;
   subType: number;
   width: number;
   height: number;
   picFormat: number;
+  /** When true, `bytes` is empty and the upload must fast-path or throw. */
+  fastOnly: boolean;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.length % 2 === 0 ? hex : '0' + hex;
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(clean.substring(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+function imageDataFromFingerprint(element: MessageElement): ImageData {
+  return {
+    bytes: new Uint8Array(0),
+    md5: hexToBytes(element.md5Hex ?? ''),
+    sha1: hexToBytes(element.sha1Hex ?? ''),
+    md5Hex: element.md5Hex ?? '',
+    sha1Hex: element.sha1Hex ?? '',
+    fileName: element.fileName || `${element.md5Hex ?? 'image'}.jpg`,
+    fileSize: element.fileSize ?? 0,
+    summary: element.summary || (element.subType === 0 ? '[image]' : '[sticker]'),
+    subType: element.subType ?? 0,
+    width: element.width ?? 0,
+    height: element.height ?? 0,
+    picFormat: element.picFormat ?? 1000,
+    fastOnly: true,
+  };
 }
 
 function loadImage(element: MessageElement): Promise<ImageData> {
+  if (element.noByteFallback) {
+    if (!element.md5Hex || !element.sha1Hex) {
+      return Promise.reject(new Error('image fast-upload requires md5Hex + sha1Hex'));
+    }
+    return Promise.resolve(imageDataFromFingerprint(element));
+  }
   return loadImageFromSource(
     element.url || element.fileId || '',
     element.fileName ?? '',
@@ -59,11 +96,13 @@ async function loadImageFromSource(source: string, fileName: string, subType: nu
     md5Hex: hashes.md5Hex,
     sha1Hex: hashes.sha1Hex,
     fileName: finalName,
+    fileSize: loaded.bytes.length,
     summary: summary || (subType === 0 ? '[image]' : '[sticker]'),
     subType,
     width: fmt.width,
     height: fmt.height,
     picFormat: fmt.format,
+    fastOnly: false,
   };
 }
 
@@ -84,7 +123,7 @@ async function startImageUpload(bridge: Bridge, isGroup: boolean, targetIdOrUid:
     upload: {
       uploadInfo: [{
         fileInfo: {
-          fileSize: image.bytes.length,
+          fileSize: image.fileSize,
           fileHash: image.md5Hex,
           fileSha1: image.sha1Hex,
           fileName: image.fileName,
@@ -185,6 +224,9 @@ export async function uploadImageMsgInfo(
   // Upload binary if uKey is present (not fast-uploaded)
   const uKey = upload?.uKey ?? '';
   if (uKey && upload?.msgInfo) {
+    if (image.fastOnly) {
+      throw new Error('image fast-upload not available (server requires bytes)');
+    }
     const session = await fetchHighwaySession(bridge);
     const extend = buildHighwayExtend(uKey, upload.msgInfo, upload.ipv4s ?? [], image.sha1);
     const commandId = isGroup ? GROUP_IMAGE_CMD_ID : PRIVATE_IMAGE_CMD_ID;

@@ -217,6 +217,7 @@ function convertElements(elems: ElemDecoded[]): MessageElement[] {
           height: img.picHeight ?? 0,
           subType: img.pbRes?.subType ?? 0,
           summary: img.pbRes?.summary ?? '[image]',
+          md5Hex: bytesToHex(img.picMd5),
         });
       }
     }
@@ -234,6 +235,7 @@ function convertElements(elems: ElemDecoded[]): MessageElement[] {
           height: img.height ?? 0,
           subType: img.pbRes?.subType ?? 0,
           summary: img.pbRes?.summary ?? '[image]',
+          md5Hex: bytesToHex(img.md5),
         });
       }
     }
@@ -397,6 +399,9 @@ function convertElements(elems: ElemDecoded[]): MessageElement[] {
                 fileSize: fi.fileSize ?? 0, width: fi.width ?? 0,
                 height: fi.height ?? 0, imageUrl: url,
               };
+              if (fi.fileHash) me.md5Hex = fi.fileHash;
+              if (fi.fileSha1) me.sha1Hex = fi.fileSha1;
+              if (fi.type?.picFormat) me.picFormat = fi.type.picFormat;
               if (info.extBizInfo?.pic) {
                 me.subType = info.extBizInfo.pic.bizType ?? 0;
                 me.summary = info.extBizInfo.pic.textSummary || '[image]';
@@ -408,6 +413,10 @@ function convertElements(elems: ElemDecoded[]): MessageElement[] {
                 type: 'record', fileName: fi.fileName ?? '',
                 fileId: idx.fileUuid ?? '', duration: fi.time ?? 0,
                 fileHash: fi.fileHash ?? '',
+                fileSize: fi.fileSize ?? 0,
+                md5Hex: fi.fileHash ?? '',
+                sha1Hex: fi.fileSha1 ?? '',
+                voiceFormat: fi.type?.voiceFormat ?? 0,
                 mediaNode: {
                   fileUuid: idx.fileUuid,
                   storeId: idx.storeId,
@@ -439,6 +448,11 @@ function convertElements(elems: ElemDecoded[]): MessageElement[] {
                 fileId: idx.fileUuid ?? '', fileSize: fi.fileSize ?? 0,
                 duration: fi.time ?? 0,
                 fileHash: fi.fileHash ?? '',
+                width: fi.width ?? 0,
+                height: fi.height ?? 0,
+                md5Hex: fi.fileHash ?? '',
+                sha1Hex: fi.fileSha1 ?? '',
+                videoFormat: fi.type?.videoFormat ?? 0,
                 mediaNode: {
                   fileUuid: idx.fileUuid,
                   storeId: idx.storeId,
@@ -490,10 +504,13 @@ function extractRichtextExtras(
   // Ptt (voice)
   if (rt.ptt) {
     const p = rt.ptt;
+    const md5Hex = p.fileMd5 && p.fileMd5.length > 0 ? bytesToHex(p.fileMd5) : '';
     const me: MessageElement = {
       type: 'record', fileName: p.fileName ?? '',
       fileSize: p.fileSize ?? 0, duration: p.time ?? 0,
-      fileHash: p.fileMd5 && p.fileMd5.length > 0 ? bytesToHex(p.fileMd5) : '',
+      fileHash: md5Hex,
+      md5Hex,
+      voiceFormat: p.format ?? 0,
     };
     if (isGroup && (p.fileId ?? 0n) !== 0n) {
       me.fileId = p.groupFileKey ?? '';

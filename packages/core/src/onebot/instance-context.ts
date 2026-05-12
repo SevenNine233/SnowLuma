@@ -20,6 +20,7 @@ import {
 } from './modules/contact-actions';
 import {
   deleteMessage,
+  forwardSingleMessage,
   getForwardMessage,
   getFriendMsgHistory,
   getGroupMsgHistory,
@@ -166,6 +167,7 @@ export function buildApiContext(ref: OneBotInstanceContext): ApiActionContext {
     sendPrivateForwardMsg: (userId, messages) => sendPrivateForwardMessage(ref, userId, messages),
     sendForwardMsg: (messages) => uploadForwardMessage(ref, messages),
     getForwardMsg: (resId) => getForwardMessage(ref, resId),
+    forwardSingleMsg: (messageId, target) => forwardSingleMessage(ref, messageId, target),
     forceFetchClientKey: () => bridge.forceFetchClientKey(),
     setFriendRemark: (userId, remark) => bridge.setFriendRemark(userId, remark),
     setGroupRemark: (groupId, remark) => bridge.setGroupRemark(groupId, remark),
