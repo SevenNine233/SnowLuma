@@ -1,12 +1,10 @@
-// Voice (PTT) upload pipeline:
-//   1. resolve / fetch the source audio bytes,
-//   2. convert to NT SILK via the ffmpegAddon (skip if already silk),
-//   3. NTV2 OIDB upload request — 0x126E (group) / 0x126D (private),
-//   4. highway HTTP upload — commandId 1008 (group) / 1007 (private),
-//   5. return the encoded `MsgInfo` bytes ready for the commonElem.
+// Voice (PTT) upload: stage the audio bytes (convert to NT silk if
+// necessary), run NTV2 upload + (optional) Highway PUT, return the
+// encoded MsgInfo for the outgoing commonElem.
 //
-// Port of NapCat's `UploadGroupPtt` / `UploadPrivatePtt` transformer + the
-// `uploadGroupPtt` / `uploadC2CPtt` paths in `PacketHighwayContext`.
+// Shared OIDB envelope + response handling + Highway PUT live in
+// pipeline.ts; this file owns the silk transcoding, the temp-file
+// cleanup hooks, and the PTT-specific OIDB fields.
 
 import fs from 'fs';
 import path from 'path';
@@ -14,21 +12,15 @@ import crypto from 'crypto';
 
 import type { Bridge } from '../bridge';
 import type { MessageElement } from '../events';
-import { protoEncode, protoDecode } from '../../protobuf/decode';
-import { makeOidbBaseSchema } from '../proto/oidb';
-import {
-  NTV2UploadRichMediaReqSchema,
-  NTV2UploadRichMediaRespSchema,
-  EncodableMediaMsgInfoSchema,
-} from '../proto/highway';
-import { loadBinarySource, computeHashes, resolveLocalFilePath } from './utils';
-import {
-  fetchHighwaySession,
-  uploadHighwayHttp,
-  buildHighwayExtend,
-} from './highway-client';
-import { encodeSilk, defaultPttTempDir } from './ffmpeg-addon';
+import { computeHashes, loadBinarySource, resolveLocalFilePath } from './utils';
+import { defaultPttTempDir, encodeSilk } from './ffmpeg-addon';
 import { createLogger } from '../../utils/logger';
+import {
+  finalizeMediaMsgInfo,
+  hexToBytes,
+  runNtv2Upload,
+  type MediaSubFileUpload,
+} from './pipeline';
 
 const log = createLogger('Ptt');
 
@@ -36,7 +28,7 @@ export const PRIVATE_PTT_CMD_ID = 1007;
 export const GROUP_PTT_CMD_ID = 1008;
 
 interface PttPayload {
-  /** Silk bytes that get uploaded to highway. Empty when fast-only forward. */
+  /** Silk bytes uploaded to Highway. Empty when forwarding from cached fingerprints. */
   bytes: Uint8Array;
   md5: Uint8Array;
   sha1: Uint8Array;
@@ -47,19 +39,11 @@ interface PttPayload {
   /** Whole seconds, >= 1. */
   duration: number;
   voiceFormat: number;
-  /** When true, `bytes` is empty and the upload must fast-path or throw. */
+  /** True when bytes is empty; pipeline throws fastOnlyError if the
+   *  server demands the bytes anyway. */
   fastOnly: boolean;
-  /** Cleanup hooks invoked once the OIDB request + highway upload finish. */
+  /** Cleanup hooks for any temp silk files staged during loadPtt. */
   cleanups: Array<() => void>;
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const clean = hex.length % 2 === 0 ? hex : '0' + hex;
-  const out = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(clean.substring(i * 2, i * 2 + 2), 16);
-  }
-  return out;
 }
 
 function pttPayloadFromFingerprint(element: MessageElement): PttPayload {
@@ -72,8 +56,8 @@ function pttPayloadFromFingerprint(element: MessageElement): PttPayload {
     fileName: element.fileName || `${element.md5Hex ?? 'record'}.amr`,
     fileSize: element.fileSize ?? 0,
     duration: element.duration ?? 1,
-    // Voice format: 1 = silk (NTV2 standard). If the original carried a
-    // different voiceFormat we honour it; the legacy ptt path on NTQQ uses 1.
+    // Voice format: 1 = silk (NTV2 standard). Honour any fingerprint that
+    // declares a different format; legacy NTQQ paths all use 1.
     voiceFormat: element.voiceFormat || 1,
     fastOnly: true,
     cleanups: [],
@@ -92,8 +76,8 @@ async function loadPtt(element: MessageElement, tempDir: string): Promise<PttPay
   if (!source) throw new Error('record source is empty');
 
   const cleanups: Array<() => void> = [];
-  // Run all queued cleanups; callable both on the success path (via the
-  // returned `cleanups` array) and the failure path (try/catch below).
+  // Run all queued cleanups; called both on the success path (via the
+  // returned `cleanups` array) and on the failure path (try/catch below).
   const runCleanups = () => {
     while (cleanups.length > 0) {
       const fn = cleanups.pop();
@@ -147,34 +131,37 @@ async function loadPtt(element: MessageElement, tempDir: string): Promise<PttPay
   }
 }
 
-function makeClientRandomId(): bigint {
-  // Same trick NapCat uses: 8 random bytes, masked into the positive int64
-  // range so it survives proto signed-int64 encoding without surprises.
-  const buf = crypto.randomBytes(8);
-  return buf.readBigUInt64BE() & 0x7FFFFFFFFFFFFFFFn;
-}
-
-async function startPttUpload(
+/**
+ * Upload a voice clip and return the encoded MsgInfo bytes that go inside
+ * a `commonElem { serviceType: 48, businessType: 22 }`.
+ */
+export async function uploadPttMsgInfo(
   bridge: Bridge,
   isGroup: boolean,
   targetIdOrUid: string | number,
-  ptt: PttPayload,
-): Promise<any> {
-  const body: any = {
-    reqHead: {
+  element: MessageElement,
+): Promise<Uint8Array> {
+  const tempDir = defaultPttTempDir();
+  const ptt = await loadPtt(element, tempDir);
+  try {
+    const uploads: MediaSubFileUpload[] = [{
+      source: 'top',
+      cmdId: isGroup ? GROUP_PTT_CMD_ID : PRIVATE_PTT_CMD_ID,
+      bytes: ptt.bytes,
+      md5: ptt.md5,
+      sha1: ptt.sha1,
+      fastOnlyError: 'record fast-upload not available (server requires bytes)',
+    }];
+
+    const upload = await runNtv2Upload({
+      bridge,
+      isGroup,
+      targetIdOrUid,
+      oidbCmd: isGroup ? 0x126E : 0x126D,
+      serviceCmd: isGroup ? 'OidbSvcTrpcTcp.0x126e_100' : 'OidbSvcTrpcTcp.0x126d_100',
       // NapCat uses requestId=1 for group / 4 for c2c. Mirror it.
-      common: { requestId: isGroup ? 1 : 4, command: 100 },
-      scene: {
-        requestType: 2,
-        businessType: 3,
-        sceneType: isGroup ? 2 : 1,
-        ...(isGroup
-          ? { group: { groupUin: Number(targetIdOrUid) } }
-          : { c2c: { accountType: 2, targetUid: String(targetIdOrUid) } }),
-      },
-      client: { agentType: 2 },
-    },
-    upload: {
+      requestId: isGroup ? 1 : 4,
+      businessType: 3,
       uploadInfo: [{
         fileInfo: {
           fileSize: ptt.fileSize,
@@ -189,9 +176,6 @@ async function startPttUpload(
         },
         subFileType: 0,
       }],
-      tryFastUploadCompleted: true,
-      srvSendMsg: false,
-      clientRandomId: makeClientRandomId(),
       compatQmsgSceneType: isGroup ? 2 : 1,
       extBizInfo: {
         // NapCat fills in a placeholder textSummary so the legacy compat
@@ -208,90 +192,11 @@ async function startPttUpload(
             : new Uint8Array([0x9a, 0x01, 0x0b, 0xaa, 0x03, 0x08, 0x08, 0x04, 0x12, 0x04, 0x00, 0x00, 0x00, 0x00]),
         },
       },
-      clientSeq: 0,
-      noNeedCompatMsg: false,
-    },
-  };
+      uploads,
+      label: 'ptt',
+    });
 
-  const oidbCmd = isGroup ? 0x126E : 0x126D;
-  const serviceCmd = isGroup ? 'OidbSvcTrpcTcp.0x126e_100' : 'OidbSvcTrpcTcp.0x126d_100';
-
-  const baseSchema = makeOidbBaseSchema(NTV2UploadRichMediaReqSchema);
-  const request = protoEncode({
-    command: oidbCmd, subCommand: 100, errorCode: 0, body, errorMsg: '', reserved: 1,
-  }, baseSchema);
-
-  const result = await bridge.sendRawPacket(serviceCmd, request);
-  if (!result.success || !result.gotResponse || !result.responseData) {
-    throw new Error(result.errorMessage || 'ptt upload request failed');
-  }
-
-  const respBaseSchema = makeOidbBaseSchema(NTV2UploadRichMediaRespSchema);
-  const resp: any = protoDecode(result.responseData, respBaseSchema);
-  if (!resp) throw new Error('failed to decode ptt upload response');
-  if (resp.errorCode && resp.errorCode !== 0) {
-    throw new Error(`OIDB error ${resp.errorCode}: ${resp.errorMsg ?? ''}`);
-  }
-
-  const uploadBody = resp.body;
-  if (!uploadBody) throw new Error('ptt upload response body missing');
-  if (uploadBody.respHead?.retCode && uploadBody.respHead.retCode !== 0) {
-    throw new Error(uploadBody.respHead.message ?? 'ptt upload failed');
-  }
-  return uploadBody.upload;
-}
-
-function finalizePttMsgInfo(upload: any): Uint8Array {
-  if (!upload?.msgInfo) throw new Error('ptt upload response missing msgInfo');
-
-  const msgInfoBody = (upload.msgInfo.msgInfoBody ?? []).map((b: any) => ({
-    index: b.index, picture: b.picture, fileExist: b.fileExist, hashSum: b.hashSum,
-  }));
-
-  const extBizInfo: any = {};
-  if (upload.msgInfo.extBizInfo?.pic) extBizInfo.pic = upload.msgInfo.extBizInfo.pic;
-  if (upload.msgInfo.extBizInfo?.video) extBizInfo.video = upload.msgInfo.extBizInfo.video;
-  if (upload.msgInfo.extBizInfo?.ptt) extBizInfo.ptt = upload.msgInfo.extBizInfo.ptt;
-  if (upload.msgInfo.extBizInfo?.busiType !== undefined) {
-    extBizInfo.busiType = upload.msgInfo.extBizInfo.busiType;
-  }
-
-  return protoEncode({ msgInfoBody, extBizInfo }, EncodableMediaMsgInfoSchema);
-}
-
-/**
- * Upload a voice clip and return the encoded `MsgInfo` bytes that go inside
- * a `commonElem { serviceType: 48, businessType: 22 }`.
- */
-export async function uploadPttMsgInfo(
-  bridge: Bridge,
-  isGroup: boolean,
-  targetIdOrUid: string | number,
-  element: MessageElement,
-): Promise<Uint8Array> {
-  const tempDir = defaultPttTempDir();
-  const ptt = await loadPtt(element, tempDir);
-  try {
-    const upload = await startPttUpload(bridge, isGroup, targetIdOrUid, ptt);
-
-    // Highway upload only happens when the server didn't fast-path the file
-    // (uKey present == "we want the bytes"). Otherwise we just embed the
-    // returned MsgInfo and trust the dedupe.
-    const uKey = upload?.uKey ?? '';
-    if (uKey && upload?.msgInfo) {
-      if (ptt.fastOnly) {
-        throw new Error('record fast-upload not available (server requires bytes)');
-      }
-      log.debug('highway upload: bytes=%d md5=%s scene=%s', ptt.bytes.length, ptt.md5Hex, isGroup ? 'group' : 'c2c');
-      const session = await fetchHighwaySession(bridge);
-      const extend = buildHighwayExtend(uKey, upload.msgInfo, upload.ipv4s ?? [], ptt.sha1);
-      const commandId = isGroup ? GROUP_PTT_CMD_ID : PRIVATE_PTT_CMD_ID;
-      await uploadHighwayHttp(bridge, session, commandId, ptt.bytes, ptt.md5, extend);
-    } else {
-      log.debug('ptt fast-uploaded (server already has md5=%s)', ptt.md5Hex);
-    }
-
-    return finalizePttMsgInfo(upload);
+    return finalizeMediaMsgInfo(upload);
   } finally {
     for (const fn of ptt.cleanups) {
       try { fn(); } catch { /* best-effort cleanup */ }

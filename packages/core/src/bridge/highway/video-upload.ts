@@ -1,12 +1,11 @@
-// Video upload pipeline:
-//   1. resolve / fetch the source video and optional thumbnail,
-//   2. generate a thumbnail via ffmpegAddon when needed,
-//   3. NTV2 OIDB upload request - 0x11EA (group) / 0x11E9 (private),
-//   4. highway HTTP upload for video + thumbnail,
-//   5. return the encoded `MsgInfo` bytes ready for the commonElem.
+// Video upload: stage the source video and a thumbnail (extracted via
+// ffmpeg if not supplied), run NTV2 upload + (optional) Highway PUTs for
+// both files, return the encoded MsgInfo for the outgoing commonElem.
 //
-// Port of NapCat's UploadGroupVideo / UploadPrivateVideo transformers and
-// the uploadGroupVideo / uploadC2CVideo paths in PacketHighwayContext.
+// Shared OIDB envelope + response handling + Highway PUT loop live in
+// pipeline.ts; this file owns the ffmpeg thumb extraction, the 1 MB
+// streaming sha1 used by main-video Highway uploads, and the
+// video-specific OIDB fields (uploadInfo has TWO entries — main + thumb).
 
 import fs from 'fs';
 import os from 'os';
@@ -15,26 +14,20 @@ import crypto from 'crypto';
 
 import type { Bridge } from '../bridge';
 import type { MessageElement } from '../events';
-import { protoEncode, protoDecode } from '../../protobuf/decode';
-import { makeOidbBaseSchema } from '../proto/oidb';
 import {
-  NTV2UploadRichMediaReqSchema,
-  NTV2UploadRichMediaRespSchema,
-  EncodableMediaMsgInfoSchema,
-} from '../proto/highway';
-import {
-  loadBinarySource,
   computeHashes,
   detectImageFormat,
+  loadBinarySource,
   resolveLocalFilePath,
 } from './utils';
-import {
-  fetchHighwaySession,
-  uploadHighwayHttp,
-  buildHighwayExtend,
-} from './highway-client';
 import { getFFmpegAddon } from './ffmpeg-addon';
 import { createLogger } from '../../utils/logger';
+import {
+  finalizeMediaMsgInfo,
+  hexToBytes,
+  runNtv2Upload,
+  type MediaSubFileUpload,
+} from './pipeline';
 
 const log = createLogger('Video');
 
@@ -52,7 +45,7 @@ const FALLBACK_THUMB = Buffer.from(
 );
 
 interface VideoPayload {
-  /** Video bytes. Empty when fast-only forward. */
+  /** Video bytes. Empty when forwarding from cached fingerprints. */
   bytes: Uint8Array;
   md5: Uint8Array;
   sha1: Uint8Array;
@@ -67,20 +60,12 @@ interface VideoPayload {
   duration: number;
   videoFormat: number;
   thumb: ThumbPayload;
-  /** When true, video bytes are empty; OIDB must fast-upload the video. The
-   *  thumb is always present (computed locally from FALLBACK_THUMB) so the
-   *  thumb subFile may still upload normally. */
+  /** When true, video bytes are empty; pipeline throws fastOnlyError
+   *  for the main file if the server demands the bytes. The thumb is
+   *  always present (FALLBACK_THUMB at worst) so its sub-file uploads
+   *  normally regardless. */
   fastOnly: boolean;
   cleanups: Array<() => void>;
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const clean = hex.length % 2 === 0 ? hex : '0' + hex;
-  const out = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(clean.substring(i * 2, i * 2 + 2), 16);
-  }
-  return out;
 }
 
 function makeFallbackThumb(): ThumbPayload {
@@ -127,6 +112,12 @@ interface ThumbPayload {
   width: number;
   height: number;
 }
+
+// ─────────────── 1MB-block sha1 (Highway main-video extend) ───────────────
+
+// Highway expects sha1 computed over each 1 MB block of the file, plus
+// the final overall sha1. This is a streaming implementation that doesn't
+// reuse Node's crypto because Node only exposes the final digest.
 
 class Sha1StreamState {
   readonly blockSize = 64;
@@ -264,6 +255,8 @@ function computeVideoSha1Blocks(bytes: Uint8Array): Uint8Array[] {
   return blocks;
 }
 
+// ─────────────── source staging + thumb extraction ───────────────
+
 function defaultVideoTempDir(): string {
   return path.join(os.tmpdir(), 'snowluma-video');
 }
@@ -275,11 +268,6 @@ function sourceExtension(fileName: string, source: string): string {
   const local = resolveLocalFilePath(source);
   const fromSource = local ? path.extname(local) : '';
   return fromSource || '.mp4';
-}
-
-function makeClientRandomId(): bigint {
-  const buf = crypto.randomBytes(8);
-  return buf.readBigUInt64BE() & 0x7FFFFFFFFFFFFFFFn;
 }
 
 async function stageVideoSource(element: MessageElement, tempDir: string, cleanups: Array<() => void>): Promise<{
@@ -419,26 +407,52 @@ async function loadVideo(element: MessageElement): Promise<VideoPayload> {
   }
 }
 
-async function startVideoUpload(
+// ─────────────── exported entry ───────────────
+
+/**
+ * Upload a video and return the encoded MsgInfo bytes that go inside a
+ * `commonElem { serviceType: 48, businessType: 21 }`.
+ *
+ * Two highway PUTs run when the server doesn't fast-path: the main video
+ * (with per-1MB-block sha1) and a thumb (read off `upload.subFileInfos[0]`).
+ */
+export async function uploadVideoMsgInfo(
   bridge: Bridge,
   isGroup: boolean,
   targetIdOrUid: string | number,
-  video: VideoPayload,
-): Promise<any> {
-  const body: any = {
-    reqHead: {
-      common: { requestId: 3, command: 100 },
-      scene: {
-        requestType: 2,
-        businessType: 2,
-        sceneType: isGroup ? 2 : 1,
-        ...(isGroup
-          ? { group: { groupUin: Number(targetIdOrUid) } }
-          : { c2c: { accountType: 2, targetUid: String(targetIdOrUid) } }),
+  element: MessageElement,
+): Promise<Uint8Array> {
+  const video = await loadVideo(element);
+  try {
+    const uploads: MediaSubFileUpload[] = [
+      {
+        source: 'top',
+        cmdId: isGroup ? GROUP_VIDEO_CMD_ID : PRIVATE_VIDEO_CMD_ID,
+        bytes: video.bytes,
+        md5: video.md5,
+        sha1: video.sha1Blocks,
+        subFileIndex: 0,
+        fastOnlyError: 'video fast-upload not available (server requires bytes)',
       },
-      client: { agentType: 2 },
-    },
-    upload: {
+      {
+        source: 0, // upload.subFileInfos[0]
+        cmdId: isGroup ? GROUP_VIDEO_THUMB_CMD_ID : PRIVATE_VIDEO_THUMB_CMD_ID,
+        bytes: video.thumb.bytes,
+        md5: video.thumb.md5,
+        sha1: video.thumb.sha1,
+        subFileIndex: 1,
+        // No fastOnlyError: thumb always has bytes (FALLBACK_THUMB at worst).
+      },
+    ];
+
+    const upload = await runNtv2Upload({
+      bridge,
+      isGroup,
+      targetIdOrUid,
+      oidbCmd: isGroup ? 0x11EA : 0x11E9,
+      serviceCmd: isGroup ? 'OidbSvcTrpcTcp.0x11ea_100' : 'OidbSvcTrpcTcp.0x11e9_100',
+      requestId: 3,
+      businessType: 2,
       uploadInfo: [
         {
           fileInfo: {
@@ -469,9 +483,6 @@ async function startVideoUpload(
           subFileType: 100,
         },
       ],
-      tryFastUploadCompleted: true,
-      srvSendMsg: false,
-      clientRandomId: makeClientRandomId(),
       compatQmsgSceneType: 2,
       extBizInfo: {
         pic: { bizType: 0, textSummary: 'Nya~' },
@@ -482,100 +493,12 @@ async function startVideoUpload(
           bytesGeneralFlags: new Uint8Array(0),
         },
       },
-      clientSeq: 0,
-      noNeedCompatMsg: false,
-    },
-  };
+      uploads,
+      label: 'video',
+    });
 
-  const oidbCmd = isGroup ? 0x11EA : 0x11E9;
-  const serviceCmd = isGroup ? 'OidbSvcTrpcTcp.0x11ea_100' : 'OidbSvcTrpcTcp.0x11e9_100';
-
-  const baseSchema = makeOidbBaseSchema(NTV2UploadRichMediaReqSchema);
-  const request = protoEncode({
-    command: oidbCmd, subCommand: 100, errorCode: 0, body, errorMsg: '', reserved: 1,
-  }, baseSchema);
-
-  const result = await bridge.sendRawPacket(serviceCmd, request);
-  if (!result.success || !result.gotResponse || !result.responseData) {
-    throw new Error(result.errorMessage || 'video upload request failed');
-  }
-
-  const respBaseSchema = makeOidbBaseSchema(NTV2UploadRichMediaRespSchema);
-  const resp: any = protoDecode(result.responseData, respBaseSchema);
-  if (!resp) throw new Error('failed to decode video upload response');
-  if (resp.errorCode && resp.errorCode !== 0) {
-    throw new Error(`OIDB error ${resp.errorCode}: ${resp.errorMsg ?? ''}`);
-  }
-
-  const uploadBody = resp.body;
-  if (!uploadBody) throw new Error('video upload response body missing');
-  if (uploadBody.respHead?.retCode && uploadBody.respHead.retCode !== 0) {
-    throw new Error(uploadBody.respHead.message ?? 'video upload failed');
-  }
-  return uploadBody.upload;
-}
-
-function finalizeVideoMsgInfo(upload: any): Uint8Array {
-  if (!upload?.msgInfo) throw new Error('video upload response missing msgInfo');
-
-  const msgInfoBody = (upload.msgInfo.msgInfoBody ?? []).map((b: any) => ({
-    index: b.index, picture: b.picture, fileExist: b.fileExist, hashSum: b.hashSum,
-  }));
-
-  const extBizInfo: any = {};
-  if (upload.msgInfo.extBizInfo?.pic) extBizInfo.pic = upload.msgInfo.extBizInfo.pic;
-  if (upload.msgInfo.extBizInfo?.video) extBizInfo.video = upload.msgInfo.extBizInfo.video;
-  if (upload.msgInfo.extBizInfo?.ptt) extBizInfo.ptt = upload.msgInfo.extBizInfo.ptt;
-  if (upload.msgInfo.extBizInfo?.busiType !== undefined) {
-    extBizInfo.busiType = upload.msgInfo.extBizInfo.busiType;
-  }
-
-  return protoEncode({ msgInfoBody, extBizInfo }, EncodableMediaMsgInfoSchema);
-}
-
-/**
- * Upload a video and return the encoded `MsgInfo` bytes that go inside
- * a `commonElem { serviceType: 48, businessType: 21 }`.
- */
-export async function uploadVideoMsgInfo(
-  bridge: Bridge,
-  isGroup: boolean,
-  targetIdOrUid: string | number,
-  element: MessageElement,
-): Promise<Uint8Array> {
-  const video = await loadVideo(element);
-  try {
-    const upload = await startVideoUpload(bridge, isGroup, targetIdOrUid, video);
-    let session: Awaited<ReturnType<typeof fetchHighwaySession>> | null = null;
-    const getSession = async () => {
-      session ??= await fetchHighwaySession(bridge);
-      return session;
-    };
-
-    const uKey = upload?.uKey ?? '';
-    if (uKey && upload?.msgInfo) {
-      if (video.fastOnly) {
-        throw new Error('video fast-upload not available (server requires bytes)');
-      }
-      log.debug('highway video upload: bytes=%d md5=%s scene=%s', video.bytes.length, video.md5Hex, isGroup ? 'group' : 'c2c');
-      const extend = buildHighwayExtend(uKey, upload.msgInfo, upload.ipv4s ?? [], video.sha1Blocks, 0);
-      const commandId = isGroup ? GROUP_VIDEO_CMD_ID : PRIVATE_VIDEO_CMD_ID;
-      await uploadHighwayHttp(bridge, await getSession(), commandId, video.bytes, video.md5, extend);
-    } else {
-      log.debug('video fast-uploaded (server already has md5=%s)', video.md5Hex);
-    }
-
-    const subFile = upload?.subFileInfos?.[0];
-    if (subFile?.uKey && upload?.msgInfo) {
-      log.debug('highway video thumb upload: bytes=%d md5=%s scene=%s', video.thumb.bytes.length, video.thumb.md5Hex, isGroup ? 'group' : 'c2c');
-      const extend = buildHighwayExtend(subFile.uKey, upload.msgInfo, subFile.ipv4s ?? [], video.thumb.sha1, 1);
-      const commandId = isGroup ? GROUP_VIDEO_THUMB_CMD_ID : PRIVATE_VIDEO_THUMB_CMD_ID;
-      await uploadHighwayHttp(bridge, await getSession(), commandId, video.thumb.bytes, video.thumb.md5, extend);
-    } else {
-      log.debug('video thumb fast-uploaded (server already has md5=%s)', video.thumb.md5Hex);
-    }
-
-    return finalizeVideoMsgInfo(upload);
+    log.debug('video upload completed: md5=%s scene=%s', video.md5Hex, isGroup ? 'group' : 'c2c');
+    return finalizeMediaMsgInfo(upload);
   } finally {
     for (const fn of video.cleanups) {
       try { fn(); } catch { /* best-effort cleanup */ }
