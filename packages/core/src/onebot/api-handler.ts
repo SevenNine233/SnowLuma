@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue, MessageMeta } from './types';
+import type { ForwardPreviewMeta } from './modules/message-actions';
 import { RETCODE, failedResponse } from './types';
 
 import { register as registerInfo } from './actions/info';
@@ -97,8 +98,8 @@ export interface ApiActionContext {
   handleGetGroupSystemMsg: () => Promise<JsonObject[]>;
   getDownloadRKeys: () => Promise<JsonObject[]>;
   // Forward message
-  sendGroupForwardMsg: (groupId: number, messages: JsonValue) => Promise<{ messageId: number; forwardId: string }>;
-  sendPrivateForwardMsg: (userId: number, messages: JsonValue) => Promise<{ messageId: number; forwardId: string }>;
+  sendGroupForwardMsg: (groupId: number, messages: JsonValue, meta?: ForwardPreviewMeta) => Promise<{ messageId: number; forwardId: string }>;
+  sendPrivateForwardMsg: (userId: number, messages: JsonValue, meta?: ForwardPreviewMeta) => Promise<{ messageId: number; forwardId: string }>;
   sendForwardMsg: (messages: JsonValue) => Promise<{ forwardId: string }>;
   getForwardMsg: (resId: string) => Promise<JsonObject[]>;
   forwardSingleMsg: (messageId: number, target: { groupId?: number; userId?: number }) => Promise<{ messageId: number }>;
