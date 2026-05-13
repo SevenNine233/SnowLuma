@@ -60,6 +60,10 @@ export class OneBotManager {
       instance.addPid(activePid);
     }
 
+    // Seed nickname with the UIN so the WebUI never renders blank while
+    // warmup is in flight or if warmup never resolves a real nickname.
+    if (!qqInfo.nickname) qqInfo.nickname = uin;
+
     this.instances.set(uin, instance);
     log.info('session started: UIN=%s', uin);
 
@@ -81,12 +85,17 @@ export class OneBotManager {
 }
 
 async function warmUpBridgeState(uin: string, qqInfo: QQInfo, bridge: Bridge): Promise<void> {
-  // Step 1: Fetch friend list + derive self profile
+  const selfUin = parseInt(uin, 10) || 0;
+  let selfResolved = false;
+
+  // Step 1: Fetch friend list + derive self profile when QQ happens to
+  // include self in the response. Some accounts / versions omit self,
+  // which used to leave qqInfo.nickname empty — see step 1b for the
+  // explicit fallback.
   try {
     const friends = await bridge.fetchFriendList();
     log.info('friends loaded: UIN=%s count=%d', uin, friends.length);
 
-    const selfUin = parseInt(uin, 10) || 0;
     for (const f of friends) {
       if (f.uin === selfUin) {
         qqInfo.setSelfProfile({
@@ -96,11 +105,29 @@ async function warmUpBridgeState(uin: string, qqInfo: QQInfo, bridge: Bridge): P
         });
         qqInfo.nickname = f.nickname || uin;
         log.debug('self info: UIN=%s uid=%s nickname=%s', uin, f.uid, f.nickname ?? '');
+        selfResolved = true;
         break;
       }
     }
   } catch (e) {
     log.warn('failed to load friends for UIN %s: %s', uin, e instanceof Error ? e.message : String(e));
+  }
+
+  // Step 1b: friend-list path didn't resolve self → fetch user profile
+  // directly via OIDB 0xFE1_2 so multi-account WebUI shows a nickname
+  // for every injected session, not just the ones where QQ echoed self
+  // back in the friend list.
+  if (!selfResolved && selfUin > 0) {
+    try {
+      const profile = await bridge.fetchUserProfile(selfUin);
+      qqInfo.setSelfProfile(profile);
+      qqInfo.nickname = profile.nickname || uin;
+      log.debug('self info via profile: UIN=%s uid=%s nickname=%s',
+        uin, profile.uid, profile.nickname);
+    } catch (e) {
+      log.warn('failed to load self profile for UIN %s: %s',
+        uin, e instanceof Error ? e.message : String(e));
+    }
   }
 
   // Step 2: Fetch group list
