@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../src/bridge/bridge-oidb', () => ({
   sendOidbAndCheck: vi.fn(async () => undefined),
   sendOidbAndDecode: vi.fn(async () => ({})),
-  resolveUserUid: vi.fn(async () => 'resolved-uid'),
   makeOidbRequest: vi.fn(() => new Uint8Array(0)),
 }));
 
@@ -27,7 +26,6 @@ describe('actions/profile', () => {
   beforeEach(() => {
     vi.mocked(oidb.sendOidbAndCheck).mockClear();
     vi.mocked(oidb.sendOidbAndDecode).mockClear();
-    vi.mocked(oidb.resolveUserUid).mockClear();
     vi.mocked(highwayClient.fetchHighwaySession).mockClear();
     vi.mocked(highwayClient.uploadHighwayHttp).mockClear();
   });
@@ -63,7 +61,7 @@ describe('actions/profile', () => {
   it('setInputStatus resolves UID first and sends 0xcd4_1', async () => {
     const bridge = mockBridge();
     await profile.setInputStatus(bridge as any, 10001, 1);
-    expect(oidb.resolveUserUid).toHaveBeenCalledWith(bridge, 10001);
+    expect(bridge.resolveUserUid).toHaveBeenCalledWith(10001);
     const call = vi.mocked(oidb.sendOidbAndDecode).mock.calls[0]!;
     expect(call[1]).toBe('OidbSvcTrpcTcp.0xcd4_1');
   });

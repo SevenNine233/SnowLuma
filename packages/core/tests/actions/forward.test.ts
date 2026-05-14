@@ -3,7 +3,6 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../../src/bridge/bridge-oidb', () => ({
   sendOidbAndCheck: vi.fn(async () => undefined),
   sendOidbAndDecode: vi.fn(async () => ({})),
-  resolveUserUid: vi.fn(async () => 'resolved-uid'),
   makeOidbRequest: vi.fn(() => new Uint8Array(0)),
 }));
 

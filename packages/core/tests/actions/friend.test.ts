@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../src/bridge/bridge-oidb', () => ({
   sendOidbAndCheck: vi.fn(async () => undefined),
   sendOidbAndDecode: vi.fn(async () => ({})),
-  resolveUserUid: vi.fn(async () => 'resolved-uid'),
   makeOidbRequest: vi.fn(() => new Uint8Array(0)),
 }));
 
@@ -14,13 +13,12 @@ import { mockBridge } from './_helpers';
 describe('actions/friend', () => {
   beforeEach(() => {
     vi.mocked(oidb.sendOidbAndCheck).mockClear();
-    vi.mocked(oidb.resolveUserUid).mockClear();
   });
 
   it('setFriendAddRequest: numeric input is treated as UIN and resolved', async () => {
     const bridge = mockBridge();
     await friend.setFriendAddRequest(bridge as any, '10001', true);
-    expect(oidb.resolveUserUid).toHaveBeenCalledWith(bridge, 10001);
+    expect(bridge.resolveUserUid).toHaveBeenCalledWith(10001);
     const payload: any = vi.mocked(oidb.sendOidbAndCheck).mock.calls[0]![4];
     expect(payload).toMatchObject({ accept: 3, targetUid: 'resolved-uid' });
   });
@@ -28,7 +26,7 @@ describe('actions/friend', () => {
   it('setFriendAddRequest: non-numeric flag is forwarded as-is', async () => {
     const bridge = mockBridge();
     await friend.setFriendAddRequest(bridge as any, 'flag-abc', false);
-    expect(oidb.resolveUserUid).not.toHaveBeenCalled();
+    expect(bridge.resolveUserUid).not.toHaveBeenCalled();
     const payload: any = vi.mocked(oidb.sendOidbAndCheck).mock.calls[0]![4];
     expect(payload).toMatchObject({ accept: 5, targetUid: 'flag-abc' });
   });
@@ -36,7 +34,7 @@ describe('actions/friend', () => {
   it('deleteFriend resolves UID, calls 0x126b_0, and triggers a friend-list refresh', async () => {
     const bridge = mockBridge();
     await friend.deleteFriend(bridge as any, 10001, true);
-    expect(oidb.resolveUserUid).toHaveBeenCalledWith(bridge, 10001);
+    expect(bridge.resolveUserUid).toHaveBeenCalledWith(10001);
     const call = vi.mocked(oidb.sendOidbAndCheck).mock.calls[0]!;
     expect(call[1]).toBe('OidbSvcTrpcTcp.0x126b_0');
     expect((call[4] as any).field1.block).toBe(true);

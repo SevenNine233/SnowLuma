@@ -3,7 +3,6 @@
 // same five-line utility from every themed file.
 
 import type { Bridge } from '../bridge';
-import { resolveUserUid } from '../bridge-oidb';
 
 /**
  * Coerce numbers, strings, and bigints to a plain integer.
@@ -48,7 +47,7 @@ export async function resolveSelfUid(bridge: Bridge): Promise<string> {
   if (selfUin <= 0) {
     throw new Error('self uid is unavailable');
   }
-  selfUid = await resolveUserUid(bridge, selfUin);
+  selfUid = await bridge.resolveUserUid(selfUin);
   return selfUid;
 }
 

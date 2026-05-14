@@ -18,7 +18,6 @@ import {
 } from './proto/action';
 
 // Delegated modules
-import { resolveUserUid as resolveUserUid_ } from './bridge-oidb';
 import {
   fetchFriendList as fetchFriendList_,
   fetchGroupList as fetchGroupList_,
@@ -176,6 +175,10 @@ export class Bridge {
   constructor(qqInfo: QQInfo, identity = IdentityService.memory(qqInfo)) {
     this.qqInfo_ = qqInfo;
     this.identity = identity;
+    this.identity.setFetcher({
+      fetchProfile: (uin) => this.fetchUserProfile(uin),
+      fetchGroupMemberList: (gid) => this.fetchGroupMemberList(gid),
+    });
     this.registerDefaultHandlers();
   }
 
@@ -553,7 +556,7 @@ export class Bridge {
   // --- Delegated: OIDB helpers ---
 
   async resolveUserUid(uin: number, groupId?: number): Promise<string> {
-    return resolveUserUid_(this, uin, groupId);
+    return this.identity.resolveUid(uin, groupId);
   }
 
   // --- Delegated: Contact / info queries ---

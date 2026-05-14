@@ -3,7 +3,7 @@
 // protocol uses opaque UIDs rather than QQ uin numbers.
 
 import type { Bridge } from '../bridge';
-import { sendOidbAndCheck, resolveUserUid } from '../bridge-oidb';
+import { sendOidbAndCheck } from '../bridge-oidb';
 import {
   OidbDeleteFriendSchema,
   OidbFriendRequestActionSchema,
@@ -13,14 +13,14 @@ import {
 export async function setFriendAddRequest(bridge: Bridge, uidOrFlag: string, approve: boolean): Promise<void> {
   let targetUid = uidOrFlag;
   if (/^\d+$/.test(uidOrFlag)) {
-    targetUid = await resolveUserUid(bridge, parseInt(uidOrFlag, 10));
+    targetUid = await bridge.resolveUserUid(parseInt(uidOrFlag, 10));
   }
   await sendOidbAndCheck(bridge, 'OidbSvcTrpcTcp.0xb5d_44', 0xB5D, 44,
     { accept: approve ? 3 : 5, targetUid }, OidbFriendRequestActionSchema);
 }
 
 export async function deleteFriend(bridge: Bridge, userId: number, block = false): Promise<void> {
-  const targetUid = await resolveUserUid(bridge, userId);
+  const targetUid = await bridge.resolveUserUid(userId);
   await sendOidbAndCheck(bridge, 'OidbSvcTrpcTcp.0x126b_0', 0x126B, 0,
     {
       field1: {
@@ -47,7 +47,7 @@ export async function deleteFriend(bridge: Bridge, userId: number, block = false
 }
 
 export async function setFriendRemark(bridge: Bridge, userId: number, remark: string): Promise<void> {
-  const uid = await resolveUserUid(bridge, userId);
+  const uid = await bridge.resolveUserUid(userId);
   await sendOidbAndCheck(bridge, 'OidbSvcTrpcTcp.0xb6e_2', 0xB6E, 2,
     { targetUid: uid, remark }, OidbSetFriendRemarkSchema);
 }

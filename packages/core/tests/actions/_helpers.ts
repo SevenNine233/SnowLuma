@@ -24,6 +24,7 @@ export interface MockBridge {
   fetchFriendList: ReturnType<typeof vi.fn>;
   fetchGroupMemberList: ReturnType<typeof vi.fn>;
   fetchUserProfile: ReturnType<typeof vi.fn>;
+  resolveUserUid: ReturnType<typeof vi.fn>;
 }
 
 export function mockBridge(overrides: Partial<MockBridge> = {}): MockBridge {
@@ -50,6 +51,7 @@ export function mockBridge(overrides: Partial<MockBridge> = {}): MockBridge {
     fetchFriendList: vi.fn(async () => []),
     fetchGroupMemberList: vi.fn(async () => []),
     fetchUserProfile: vi.fn(async () => ({ uid: 'profile-uid' })),
+    resolveUserUid: vi.fn(async () => 'resolved-uid'),
     ...overrides,
   };
 }

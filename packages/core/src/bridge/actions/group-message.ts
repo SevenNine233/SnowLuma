@@ -5,7 +5,7 @@
 
 import type { Bridge } from '../bridge';
 import { protoEncode } from '../../protobuf/decode';
-import { sendOidbAndCheck, resolveUserUid } from '../bridge-oidb';
+import { sendOidbAndCheck } from '../bridge-oidb';
 import {
   C2CRecallRequestSchema,
   GroupRecallRequestSchema,
@@ -28,7 +28,7 @@ export async function recallPrivateMessage(
   bridge: Bridge, userUin: number, clientSeq: number,
   msgSeq: number, random: number, timestamp: number,
 ): Promise<void> {
-  const targetUid = await resolveUserUid(bridge, userUin);
+  const targetUid = await bridge.resolveUserUid(userUin);
   const request = protoEncode({
     type: 1,
     targetUid,
@@ -53,7 +53,7 @@ export async function markPrivateMessageRead(
   msgSeq: number,
   timestamp: number = Math.floor(Date.now() / 1000),
 ): Promise<void> {
-  const uid = await resolveUserUid(bridge, userId);
+  const uid = await bridge.resolveUserUid(userId);
 
   const request = protoEncode({
     c2cList: [

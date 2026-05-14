@@ -8,6 +8,17 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('Identity');
 
+/**
+ * Hooks Identity uses when its read methods miss every cache layer. Wired in
+ * after construction (Bridge owns these methods, but Bridge can't exist
+ * before Identity does). Each call is expected to invoke the matching
+ * remember* observation on this service as a side effect.
+ */
+export interface IdentityFetcher {
+  fetchProfile(uin: number): Promise<UserProfileInfo>;
+  fetchGroupMemberList?(groupId: number): Promise<unknown>;
+}
+
 interface UserInput {
   uid?: string;
   uin?: number;
@@ -71,6 +82,7 @@ export class IdentityService {
   private readonly uinByUid = new Map<string, number>();
   private readonly uidByUin = new Map<number, string>();
   private inTransaction = false;
+  private fetcher: IdentityFetcher | null = null;
 
   constructor(
     private readonly qqInfo: QQInfo,
@@ -103,6 +115,38 @@ export class IdentityService {
 
   get persistent(): boolean {
     return this.db !== null;
+  }
+
+  setFetcher(fetcher: IdentityFetcher): void {
+    this.fetcher = fetcher;
+  }
+
+  /**
+   * UIN → UID with network fallback. Returns cached value on hit; otherwise
+   * invokes the registered fetcher (typically `bridge.fetchUserProfile`),
+   * which is expected to write the result back through `rememberUserProfile`
+   * before this method re-queries the cache. Throws if no UID can be
+   * obtained from any layer.
+   */
+  async resolveUid(uin: number, groupId?: number): Promise<string> {
+    const normalized = normalizeUin(uin);
+    if (normalized === null) throw new Error(`invalid uin: ${uin}`);
+
+    const cached = this.findUidByUin(normalized, groupId);
+    if (cached) return cached;
+
+    if (groupId !== undefined && this.fetcher?.fetchGroupMemberList) {
+      try { await this.fetcher.fetchGroupMemberList(groupId); } catch { /* ignore */ }
+      const afterMembers = this.findUidByUin(normalized, groupId);
+      if (afterMembers) return afterMembers;
+    }
+
+    if (!this.fetcher) throw new Error(`failed to resolve UID for UIN ${normalized}: no fetcher`);
+
+    const profile = await this.fetcher.fetchProfile(normalized);
+    if (profile.uid) return profile.uid;
+
+    throw new Error(`failed to resolve UID for UIN ${normalized}`);
   }
 
   rememberFriends(friends: FriendInfo[]): void {

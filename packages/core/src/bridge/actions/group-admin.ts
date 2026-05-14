@@ -4,7 +4,7 @@
 // so callers can grep across the two layers.
 
 import type { Bridge } from '../bridge';
-import { sendOidbAndCheck, sendOidbAndDecode, resolveUserUid } from '../bridge-oidb';
+import { sendOidbAndCheck, sendOidbAndDecode } from '../bridge-oidb';
 import {
   Oidb0x89a_0AddOptionSchema,
   Oidb0x89a_0SearchSchema,
@@ -26,7 +26,7 @@ import {
 // ─────────────── mute / un-mute ───────────────
 
 export async function muteGroupMember(bridge: Bridge, groupId: number, userId: number, duration: number): Promise<void> {
-  const uid = await resolveUserUid(bridge, userId, groupId);
+  const uid = await bridge.resolveUserUid(userId, groupId);
   await sendOidbAndCheck(bridge, 'OidbSvcTrpcTcp.0x1253_1', 0x1253, 1,
     { groupUin: groupId, type: 1, body: { targetUid: uid, duration } }, OidbMuteMemberSchema);
 }
@@ -62,13 +62,13 @@ export async function setGroupAddRequest(
 // ─────────────── kick / leave ───────────────
 
 export async function kickGroupMember(bridge: Bridge, groupId: number, userId: number, reject: boolean, reason = ''): Promise<void> {
-  const uid = await resolveUserUid(bridge, userId, groupId);
+  const uid = await bridge.resolveUserUid(userId, groupId);
   await sendOidbAndCheck(bridge, 'OidbSvcTrpcTcp.0x8a0_1', 0x8A0, 1,
     { groupUin: groupId, targetUid: uid, rejectAddRequest: reject, reason }, OidbKickMemberSchema);
 }
 
 export async function kickGroupMembers(bridge: Bridge, groupId: number, userIds: number[], reject: boolean): Promise<void> {
-  const targetUids = await Promise.all(userIds.map(userId => resolveUserUid(bridge, userId, groupId)));
+  const targetUids = await Promise.all(userIds.map(userId => bridge.resolveUserUid(userId, groupId)));
   await sendOidbAndCheck(bridge, 'OidbSvcTrpcTcp.0x8a0_1', 0x8A0, 1,
     { groupId: BigInt(groupId), targetUids, rejectAddRequest: reject ? 1 : 0, kickReason: new Uint8Array(0), field12: 0 }, Oidb0x8a0ReqSchema);
 }
@@ -81,13 +81,13 @@ export async function leaveGroup(bridge: Bridge, groupId: number): Promise<void>
 // ─────────────── role / display name ───────────────
 
 export async function setGroupAdmin(bridge: Bridge, groupId: number, userId: number, enable: boolean): Promise<void> {
-  const uid = await resolveUserUid(bridge, userId, groupId);
+  const uid = await bridge.resolveUserUid(userId, groupId);
   await sendOidbAndCheck(bridge, 'OidbSvcTrpcTcp.0x1096_1', 0x1096, 1,
     { groupUin: groupId, uid, isAdmin: enable }, OidbSetAdminSchema);
 }
 
 export async function setGroupCard(bridge: Bridge, groupId: number, userId: number, card: string): Promise<void> {
-  const uid = await resolveUserUid(bridge, userId, groupId);
+  const uid = await bridge.resolveUserUid(userId, groupId);
   await sendOidbAndCheck(bridge, 'OidbSvcTrpcTcp.0x8fc_3', 0x8FC, 3,
     { groupUin: groupId, body: { targetUid: uid, targetName: card } }, OidbRenameMemberSchema);
 }
@@ -98,7 +98,7 @@ export async function setGroupName(bridge: Bridge, groupId: number, name: string
 }
 
 export async function setGroupSpecialTitle(bridge: Bridge, groupId: number, userId: number, title: string): Promise<void> {
-  const uid = await resolveUserUid(bridge, userId, groupId);
+  const uid = await bridge.resolveUserUid(userId, groupId);
   await sendOidbAndCheck(bridge, 'OidbSvcTrpcTcp.0x8fc_2', 0x8FC, 2,
     { groupUin: groupId, body: { targetUid: uid, specialTitle: title, expireTime: -1 } }, OidbSpecialTitleSchema);
 }

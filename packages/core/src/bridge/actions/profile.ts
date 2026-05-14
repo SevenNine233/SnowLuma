@@ -4,7 +4,7 @@
 
 import type { Bridge } from '../bridge';
 import { protoDecode, protoEncode } from '../../protobuf/decode';
-import { sendOidbAndCheck, sendOidbAndDecode, resolveUserUid } from '../bridge-oidb';
+import { sendOidbAndCheck, sendOidbAndDecode } from '../bridge-oidb';
 import { fetchHighwaySession, uploadHighwayHttp } from '../highway/highway-client';
 import { computeHashes, loadBinarySource } from '../highway/utils';
 import {
@@ -119,7 +119,7 @@ export async function setInputStatus(
   userId: number,
   eventType: number,
 ) {
-  const targetUid = await resolveUserUid(bridge, userId);
+  const targetUid = await bridge.resolveUserUid(userId);
 
   if (!targetUid) {
     throw new Error('target uid not found');
@@ -167,7 +167,7 @@ export async function getProfileLike(
   const isSelf = !userId;
   const targetUid = isSelf
     ? await resolveSelfUid(bridge)
-    : await resolveUserUid(bridge, userId);
+    : await bridge.resolveUserUid(userId);
 
   if (!targetUid) {
     throw new Error('target uid not found');

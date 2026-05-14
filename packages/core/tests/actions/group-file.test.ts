@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../src/bridge/bridge-oidb', () => ({
   sendOidbAndCheck: vi.fn(async () => undefined),
   sendOidbAndDecode: vi.fn(async () => ({})),
-  resolveUserUid: vi.fn(async () => 'resolved-uid'),
   makeOidbRequest: vi.fn(() => new Uint8Array(0)),
 }));
 
@@ -30,7 +29,6 @@ describe('actions/group-file', () => {
   beforeEach(() => {
     vi.mocked(oidb.sendOidbAndCheck).mockClear();
     vi.mocked(oidb.sendOidbAndDecode).mockClear();
-    vi.mocked(oidb.resolveUserUid).mockClear();
     vi.mocked(highwayClient.fetchHighwaySession).mockClear();
     vi.mocked(highwayClient.uploadHighwayHttp).mockClear();
   });
@@ -104,7 +102,7 @@ describe('actions/group-file', () => {
     const bridge = mockBridge({
       qqInfo: { uin: '10001', selfUid: '', findGroupMember: vi.fn(() => null) },
     });
-    vi.mocked(oidb.resolveUserUid)
+    vi.mocked(bridge.resolveUserUid)
       .mockResolvedValueOnce('target-uid')   // target user
       .mockResolvedValueOnce('self-uid-resolved'); // self fallback
     vi.mocked(oidb.sendOidbAndDecode).mockResolvedValueOnce({
@@ -112,7 +110,7 @@ describe('actions/group-file', () => {
     });
     const out = await groupFile.uploadPrivateFile(bridge as any, 67890, '/path/file');
     expect(out).toEqual({ fileId: 'fid', fileHash: 'hash' });
-    expect(oidb.resolveUserUid).toHaveBeenCalledTimes(2);
+    expect(bridge.resolveUserUid).toHaveBeenCalledTimes(2);
   });
 
   it('fetchGroupFiles paginates files + folders out of OIDB items', async () => {

@@ -5,7 +5,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../src/bridge/bridge-oidb', () => ({
   sendOidbAndDecode: vi.fn(async () => ({})),
   sendOidbAndCheck: vi.fn(async () => undefined),
-  resolveUserUid: vi.fn(async () => 'uid'),
   makeOidbRequest: vi.fn(() => new Uint8Array(0)),
 }));
 

@@ -1,4 +1,4 @@
-// OIDB protocol helpers -- encode requests, send+check, send+decode, UID resolution.
+// OIDB protocol helpers -- encode requests, send+check, send+decode.
 
 import type { Bridge } from './bridge';
 import type { ProtoSchema } from '../protobuf/decode';
@@ -67,25 +67,3 @@ export async function sendOidbAndDecode<T>(
   return (resp as any).body as T;
 }
 
-/**
- * Resolve a UIN to a UID string, using cache or fetching as needed.
- * Mirrors C++ resolve_user_uid_for_action.
- */
-export async function resolveUserUid(bridge: Bridge, uin: number, groupId?: number): Promise<string> {
-  // Try group member first
-  if (groupId !== undefined) {
-    const uid = bridge.identity.findUidByUin(uin, groupId);
-    if (uid) return uid;
-    // Try fetching member list
-    try { await bridge.fetchGroupMemberList(groupId); } catch { /* ignore */ }
-    const uid2 = bridge.identity.findUidByUin(uin, groupId);
-    if (uid2) return uid2;
-  }
-  // Try cached
-  const uid = bridge.identity.findUidByUin(uin);
-  if (uid) return uid;
-  // Fetch profile
-  const profile = await bridge.fetchUserProfile(uin);
-  if (profile.uid) return profile.uid;
-  throw new Error(`failed to resolve UID for UIN ${uin}`);
-}

@@ -7,7 +7,7 @@
 
 import type { Bridge } from '../bridge';
 import { protoEncode } from '../../protobuf/decode';
-import { sendOidbAndDecode, resolveUserUid } from '../bridge-oidb';
+import { sendOidbAndDecode } from '../bridge-oidb';
 import { fetchHighwaySession, uploadHighwayHttp } from '../highway/highway-client';
 import { computeHashes, computeMd5, loadBinarySource } from '../highway/utils';
 import {
@@ -368,12 +368,12 @@ export async function uploadPrivateFile(
   const loaded = await loadBinarySource(source, 'file');
   if (!loaded.bytes.length) throw new Error('private file is empty');
 
-  const targetUid = await resolveUserUid(bridge, userId);
+  const targetUid = await bridge.resolveUserUid(userId);
   let selfUid = bridge.qqInfo.selfUid;
   if (!selfUid) {
     const selfUin = toInt(bridge.qqInfo.uin);
     if (selfUin > 0) {
-      selfUid = await resolveUserUid(bridge, selfUin);
+      selfUid = await bridge.resolveUserUid(selfUin);
     }
   }
   if (!selfUid) throw new Error('self uid is unavailable');
@@ -568,7 +568,7 @@ export async function fetchGroupFileUrl(bridge: Bridge, groupId: number, fileId:
 }
 
 export async function fetchPrivateFileUrl(bridge: Bridge, userId: number, fileId: string, fileHash: string): Promise<string> {
-  const uid = await resolveUserUid(bridge, userId);
+  const uid = await bridge.resolveUserUid(userId);
   const resp = await sendOidbAndDecode<any>(
     bridge,
     'OidbSvcTrpcTcp.0xe37_1200',

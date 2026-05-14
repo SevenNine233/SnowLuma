@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { IdentityService } from '../src/bridge/identity-service';
-import { QQInfo, type GroupMemberInfo, type QQGroupInfo } from '../src/bridge/qq-info';
+import { QQInfo, type GroupMemberInfo, type QQGroupInfo, type UserProfileInfo } from '../src/bridge/qq-info';
 
 const SELF_UIN = '10001';
 const GROUP_ID = 123456789;
@@ -193,5 +193,75 @@ describe('IdentityService', () => {
 
       identity.close();
     }
+  });
+});
+
+describe('IdentityService.resolveUid', () => {
+  function makeProfile(uin: number, uid: string): UserProfileInfo {
+    return { uin, uid, nickname: '', remark: '', qid: '', sex: 'unknown', age: 0, sign: '', avatar: '' };
+  }
+
+  it('returns the cached uid without invoking the fetcher', async () => {
+    const qqInfo = new QQInfo(SELF_UIN);
+    const identity = IdentityService.memory(qqInfo);
+    identity.rememberRequestIdentity({ uid: 'u_known', uin: 12345 });
+    const fetchProfile = vi.fn(async (uin: number) => makeProfile(uin, 'should-not-be-used'));
+    identity.setFetcher({ fetchProfile });
+
+    await expect(identity.resolveUid(12345)).resolves.toBe('u_known');
+    expect(fetchProfile).not.toHaveBeenCalled();
+  });
+
+  it('falls back to fetchProfile on miss and returns the resolved uid', async () => {
+    const qqInfo = new QQInfo(SELF_UIN);
+    const identity = IdentityService.memory(qqInfo);
+    const fetchProfile = vi.fn(async (uin: number) => {
+      // Simulate the bridge writing the result back via rememberUserProfile.
+      identity.rememberUserProfile(makeProfile(uin, 'u_fetched'));
+      return makeProfile(uin, 'u_fetched');
+    });
+    identity.setFetcher({ fetchProfile });
+
+    await expect(identity.resolveUid(99999)).resolves.toBe('u_fetched');
+    expect(fetchProfile).toHaveBeenCalledWith(99999);
+  });
+
+  it('throws when neither cache nor fetcher can produce a uid', async () => {
+    const qqInfo = new QQInfo(SELF_UIN);
+    const identity = IdentityService.memory(qqInfo);
+    identity.setFetcher({ fetchProfile: async (uin) => makeProfile(uin, '') });
+
+    await expect(identity.resolveUid(99999)).rejects.toThrow(/failed to resolve UID/);
+  });
+
+  it('tries fetchGroupMemberList before fetchProfile when groupId is provided', async () => {
+    const qqInfo = new QQInfo(SELF_UIN);
+    const identity = IdentityService.memory(qqInfo);
+    identity.rememberGroups([{
+      groupId: GROUP_ID, groupName: '', remark: '',
+      memberCount: 0, memberMax: 0, members: new Map(),
+    }]);
+
+    const fetchProfile = vi.fn(async (uin: number) => makeProfile(uin, 'u_via_profile'));
+    const fetchGroupMemberList = vi.fn(async (groupId: number) => {
+      // Roster fetch should populate the cache.
+      identity.rememberGroupMembers(groupId, [makeMember(77777, 'u_via_roster')]);
+      return [];
+    });
+    identity.setFetcher({ fetchProfile, fetchGroupMemberList });
+
+    await expect(identity.resolveUid(77777, GROUP_ID)).resolves.toBe('u_via_roster');
+    expect(fetchGroupMemberList).toHaveBeenCalledWith(GROUP_ID);
+    expect(fetchProfile).not.toHaveBeenCalled();
+  });
+
+  it('throws on invalid (zero / negative) uin without calling fetcher', async () => {
+    const qqInfo = new QQInfo(SELF_UIN);
+    const identity = IdentityService.memory(qqInfo);
+    const fetchProfile = vi.fn();
+    identity.setFetcher({ fetchProfile });
+
+    await expect(identity.resolveUid(0)).rejects.toThrow(/invalid uin/);
+    expect(fetchProfile).not.toHaveBeenCalled();
   });
 });
