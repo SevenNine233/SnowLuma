@@ -123,7 +123,7 @@ export async function getGroupAtAllRemain(
     basic1: 1,
     basic2: 2,
     basic3: 1,
-    uin: BigInt(bridge.qqInfo.uin),
+    uin: BigInt(bridge.identity.uin),
     groupId: BigInt(groupId),
     type: 0,
   };

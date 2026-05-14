@@ -60,7 +60,7 @@ export async function setProfile(
   nickname?: string,
   personalNote?: string,
 ): Promise<void> {
-  const uin = BigInt(bridge.qqInfo.uin);
+  const uin = BigInt(bridge.identity.uin);
   const stringProfiles: any[] = [];
   const intProfiles: any[] = [];
 
@@ -96,7 +96,7 @@ export async function setSelfLongNick(
   longNick: string,
 ) {
   const req = {
-    uin: BigInt(bridge.qqInfo.uin),
+    uin: BigInt(bridge.identity.uin),
     profile: {
       tag: 102,
       value: String(longNick),
@@ -220,7 +220,7 @@ export async function getUnidirectionalFriendList(
   bridge: Bridge,
 ) {
   const reqObj = {
-    uint64_uin: String(bridge.qqInfo.uin),
+    uint64_uin: String(bridge.identity.uin),
     uint64_top: 0,
     uint32_req_num: 99,
     bytes_cookies: '',
@@ -251,7 +251,7 @@ export async function getUnidirectionalFriendList(
 export async function fetchCustomFace(bridge: Bridge, count: number = 10): Promise<string[]> {
   const req = {
     inner: { field1: 1, osVersion: '10.0.26200', qqVersion: '9.9.28-46928' },
-    uin: BigInt(bridge.qqInfo.uin),
+    uin: BigInt(bridge.identity.uin),
     field3: 1,
     field6: 1,
   };
@@ -265,5 +265,5 @@ export async function fetchCustomFace(bridge: Bridge, count: number = 10): Promi
     throw new Error(`fetch custom face error: ${(resp as any)?.message || 'unknown'}`);
   }
   const faceIds = (resp as any).item?.faceIds || [];
-  return faceIds.slice(0, count).map((id: string) => `https://p.qpic.cn/qq_expression/${bridge.qqInfo.uin}/${id}/0`);
+  return faceIds.slice(0, count).map((id: string) => `https://p.qpic.cn/qq_expression/${bridge.identity.uin}/${id}/0`);
 }

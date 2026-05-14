@@ -5,7 +5,6 @@
 import type { PacketInfo } from '../protocol/types';
 import type { ForwardNodePayload, QQEventVariant, MessageElement } from './events';
 import type { FriendInfo, QQGroupInfo, GroupMemberInfo, UserProfileInfo, GroupRequestInfo } from './qq-info';
-import { QQInfo } from './qq-info';
 import { MSG_PUSH_CMD, parseMsgPush } from './msg-push-handler';
 import type { PacketSender, SendPacketResult } from '../protocol/packet-sender';
 import { protoEncode, protoDecode } from '../protobuf/decode';
@@ -114,7 +113,7 @@ import type { GroupFilesResult } from './actions/group-file';
 import type { MediaIndexNode } from './actions/shared';
 import { BridgeEventBus } from './event-bus';
 
-type CmdParser = (pkt: PacketInfo, qqInfo: QQInfo) => QQEventVariant[];
+type CmdParser = (pkt: PacketInfo, identity: IdentityService) => QQEventVariant[];
 
 export interface SendMessageReceipt {
   messageId: number;
@@ -146,7 +145,6 @@ const eventLog = createLogger('Event');
 export class Bridge {
   private static readonly SEND_MSG_CMD = 'MessageSvc.PbSendMsg';
 
-  private qqInfo_: QQInfo;
   readonly identity: IdentityService;
   private pids_ = new Set<number>();
   /**
@@ -172,8 +170,7 @@ export class Bridge {
   private clientSeq_ = 100000000 + (Date.now() % 1000000000);
   private msgRandom_ = (Date.now() & 0xFFFFFFFF) >>> 0;
 
-  constructor(qqInfo: QQInfo, identity = IdentityService.memory(qqInfo)) {
-    this.qqInfo_ = qqInfo;
+  constructor(identity: IdentityService) {
     this.identity = identity;
     this.identity.setFetcher({
       fetchProfile: (uin) => this.fetchUserProfile(uin),
@@ -181,8 +178,6 @@ export class Bridge {
     });
     this.registerDefaultHandlers();
   }
-
-  get qqInfo(): QQInfo { return this.qqInfo_; }
 
   dispose(): void {
     this.identity.close();
@@ -230,7 +225,7 @@ export class Bridge {
 
     for (const handler of handlers) {
       try {
-        const events = handler(pkt, this.qqInfo_);
+        const events = handler(pkt, this.identity);
         for (const event of events) {
           if (this.needsPreDispatchIdentityRefresh(event)) {
             void this.dispatchAfterIdentityRefresh(event);
@@ -276,7 +271,7 @@ export class Bridge {
 
     const refreshed = await this.refreshMemberCache(
       event.groupId,
-      !this.qqInfo_.findGroup(event.groupId) || this.isSelfMemberIdentity(event.userUin, event.userUid),
+      !this.identity.findGroup(event.groupId) || this.isSelfMemberIdentity(event.userUin, event.userUid),
       true,
     );
     this.resolveMemberIdentityFromCache(event);
@@ -300,8 +295,8 @@ export class Bridge {
   }
 
   private isSelfMemberIdentity(uin: number, uid?: string): boolean {
-    const selfUin = Number(this.qqInfo_.uin);
-    return (uin > 0 && uin === selfUin) || (Boolean(uid) && uid === this.qqInfo_.selfUid);
+    const selfUin = Number(this.identity.uin);
+    return (uin > 0 && uin === selfUin) || (Boolean(uid) && uid === this.identity.selfUid);
   }
 
   private triggerMemberCacheRefresh(event: QQEventVariant, alreadyRefreshed = false): void {
@@ -331,7 +326,7 @@ export class Bridge {
 
     if (groupId <= 0) return;
     if (this.memberRefreshTasks_.has(groupId)) return;
-    if (event.kind === 'group_member_join' && !this.qqInfo_.findGroup(groupId)) {
+    if (event.kind === 'group_member_join' && !this.identity.findGroup(groupId)) {
       refreshGroupList = true;
     }
 
@@ -401,7 +396,7 @@ export class Bridge {
     if (refreshGroupList) {
       try { await this.fetchGroupList(); } catch { /* ignore */ }
     }
-    if (!this.qqInfo_.findGroup(groupId)) return false;
+    if (!this.identity.findGroup(groupId)) return false;
     await this.fetchGroupMemberList(groupId, { force: forceMemberList });
     return true;
   }

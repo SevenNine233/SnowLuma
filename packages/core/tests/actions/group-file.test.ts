@@ -100,7 +100,14 @@ describe('actions/group-file', () => {
 
   it('uploadPrivateFile resolves both target + self UID before OIDB call', async () => {
     const bridge = mockBridge({
-      qqInfo: { uin: '10001', selfUid: '', findGroupMember: vi.fn(() => null) },
+      identity: {
+        uin: '10001',
+        selfUid: '',
+        nickname: 'self-nick',
+        findUidByUin: vi.fn(() => 'cached-uid'),
+        findUinByUid: vi.fn(() => 0),
+        findGroupMember: vi.fn(() => null),
+      },
     });
     vi.mocked(bridge.resolveUserUid)
       .mockResolvedValueOnce('target-uid')   // target user

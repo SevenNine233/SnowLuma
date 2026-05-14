@@ -327,7 +327,7 @@ export async function uploadGroupFile(
   if (!fileId) throw new Error('group file upload response missing file_id');
 
   if (!upload.boolFileExist && uploadFile) {
-    const senderUin = toInt(bridge.qqInfo.uin);
+    const senderUin = toInt(bridge.identity.uin);
     if (senderUin <= 0) throw new Error('invalid self uin for group file upload');
 
     const uploadHost = (typeof upload.uploadIp === 'string' && upload.uploadIp)
@@ -369,16 +369,16 @@ export async function uploadPrivateFile(
   if (!loaded.bytes.length) throw new Error('private file is empty');
 
   const targetUid = await bridge.resolveUserUid(userId);
-  let selfUid = bridge.qqInfo.selfUid;
+  let selfUid = bridge.identity.selfUid;
   if (!selfUid) {
-    const selfUin = toInt(bridge.qqInfo.uin);
+    const selfUin = toInt(bridge.identity.uin);
     if (selfUin > 0) {
       selfUid = await bridge.resolveUserUid(selfUin);
     }
   }
   if (!selfUid) throw new Error('self uid is unavailable');
 
-  const senderUin = toInt(bridge.qqInfo.uin);
+  const senderUin = toInt(bridge.identity.uin);
   if (senderUin <= 0) throw new Error('invalid self uin for private file upload');
 
   const fileName = normalizeUploadFileName(name, loaded.fileName);
@@ -489,7 +489,7 @@ export async function fetchGroupFiles(bridge: Bridge, groupId: number, folderId 
       if (type === 1 && item?.fileInfo) {
         const file = item.fileInfo;
         const uploader = toInt(file.uploaderUin);
-        const cached = bridge.qqInfo.findGroupMember(groupId, uploader);
+        const cached = bridge.identity.findGroupMember(groupId, uploader);
         files.push({
           fileId: typeof file.fileId === 'string' ? file.fileId : '',
           fileName: typeof file.fileName === 'string' ? file.fileName : '',
@@ -508,7 +508,7 @@ export async function fetchGroupFiles(bridge: Bridge, groupId: number, folderId 
       } else if (type === 2 && item?.folderInfo) {
         const folder = item.folderInfo;
         const creator = toInt(folder.creatorUin);
-        const cached = bridge.qqInfo.findGroupMember(groupId, creator);
+        const cached = bridge.identity.findGroupMember(groupId, creator);
         folders.push({
           folderId: typeof folder.folderId === 'string' ? folder.folderId : '',
           folderName: typeof folder.folderName === 'string' ? folder.folderName : '',

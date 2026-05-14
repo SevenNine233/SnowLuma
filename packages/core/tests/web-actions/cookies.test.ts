@@ -28,7 +28,7 @@ import {
   getCredentials,
 } from '../../src/bridge/web-actions/cookies';
 
-const bridge = { qqInfo: { uin: '10001' } } as any;
+const bridge = { identity: { uin: '10001' } } as any;
 
 describe('cookies — forceFetchClientKey', () => {
   beforeEach(() => { vi.mocked(oidb.sendOidbAndDecode).mockReset(); });

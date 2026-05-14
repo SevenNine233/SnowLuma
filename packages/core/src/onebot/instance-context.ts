@@ -1,6 +1,5 @@
 import type { WebHonorType } from '@/bridge/web/group-honor';
 import type { Bridge } from '../bridge/bridge';
-import type { QQInfo } from '../bridge/qq-info';
 import type { ApiActionContext } from './api-handler';
 import type { ConverterContext } from './event-converter';
 import type { MediaStore } from './media-store';
@@ -56,7 +55,6 @@ export interface OneBotInstanceContext {
   /** Self UIN parsed once, used in event payloads. */
   selfId: number;
 
-  qqInfo: QQInfo;
   bridge: Bridge;
 
   messageStore: MessageStore;
@@ -74,7 +72,7 @@ export interface OneBotInstanceContext {
 }
 
 export function buildApiContext(ref: OneBotInstanceContext): ApiActionContext {
-  const { bridge, qqInfo, messageStore, mediaStore } = ref;
+  const { bridge, messageStore, mediaStore } = ref;
 
   return {
     getLoginInfo: () => getLoginInfo(ref),
@@ -90,12 +88,12 @@ export function buildApiContext(ref: OneBotInstanceContext): ApiActionContext {
     deleteMessage: (_messageId, meta) => deleteMessage(bridge, meta),
 
     // OneBot11 info actions.
-    getFriendList: () => getFriendList(bridge, qqInfo),
-    getGroupList: (noCache) => getGroupList(bridge, qqInfo, noCache),
-    getGroupInfo: (groupId, noCache) => getGroupInfo(bridge, qqInfo, groupId, noCache),
-    getGroupMemberList: (groupId, noCache) => getGroupMemberList(bridge, qqInfo, groupId, noCache),
-    getGroupMemberInfo: (groupId, userId, noCache) => getGroupMemberInfo(bridge, qqInfo, groupId, userId, noCache),
-    getStrangerInfo: (userId) => getStrangerInfo(bridge, qqInfo, userId),
+    getFriendList: () => getFriendList(bridge),
+    getGroupList: (noCache) => getGroupList(bridge, noCache),
+    getGroupInfo: (groupId, noCache) => getGroupInfo(bridge, groupId, noCache),
+    getGroupMemberList: (groupId, noCache) => getGroupMemberList(bridge, groupId, noCache),
+    getGroupMemberInfo: (groupId, userId, noCache) => getGroupMemberInfo(bridge, groupId, userId, noCache),
+    getStrangerInfo: (userId) => getStrangerInfo(bridge, userId),
 
     // Group admin.
     setGroupKick: (groupId, userId, reject) => bridge.kickGroupMember(groupId, userId, reject),

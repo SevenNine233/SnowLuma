@@ -1,11 +1,11 @@
 import type { Bridge } from '../../bridge/bridge';
-import type { QQInfo } from '../../bridge/qq-info';
+import type { IdentityService } from '../../bridge/identity-service';
 import type { OneBotInstanceContext } from '../instance-context';
 import type { JsonObject } from '../types';
 
 export function getLoginInfo(ref: OneBotInstanceContext): { userId: number; nickname: string } {
   const userId = parseInt(ref.uin, 10) || 0;
-  const nickname = ref.qqInfo.nickname || ref.uin;
+  const nickname = ref.bridge.identity.nickname || ref.uin;
   return { userId, nickname };
 }
 
@@ -19,7 +19,7 @@ async function refreshSingleGroupMembers(bridge: Bridge, groupId: number): Promi
   }
 }
 
-export async function getFriendList(bridge: Bridge, qqInfo: QQInfo): Promise<JsonObject[]> {
+export async function getFriendList(bridge: Bridge): Promise<JsonObject[]> {
   try {
     const friends = await bridge.fetchFriendList();
     return friends.map(f => ({
@@ -28,7 +28,7 @@ export async function getFriendList(bridge: Bridge, qqInfo: QQInfo): Promise<Jso
       remark: f.remark as any,
     }));
   } catch {
-    return qqInfo.friends.map(f => ({
+    return bridge.identity.friends.map(f => ({
       user_id: f.uin as any,
       nickname: f.nickname as any,
       remark: f.remark as any,
@@ -38,17 +38,16 @@ export async function getFriendList(bridge: Bridge, qqInfo: QQInfo): Promise<Jso
 
 export async function getGroupList(
   bridge: Bridge,
-  qqInfo: QQInfo,
   noCache?: boolean,
 ): Promise<JsonObject[]> {
   try {
-    if (noCache || qqInfo.groups.length === 0) {
+    if (noCache || bridge.identity.groups.length === 0) {
       await bridge.fetchGroupList();
     }
   } catch {
     // Use cached data.
   }
-  return qqInfo.groups.map(g => ({
+  return bridge.identity.groups.map(g => ({
     group_id: g.groupId as any,
     group_name: g.groupName as any,
     member_count: g.memberCount as any,
@@ -58,18 +57,17 @@ export async function getGroupList(
 
 export async function getGroupInfo(
   bridge: Bridge,
-  qqInfo: QQInfo,
   groupId: number,
   noCache?: boolean,
 ): Promise<JsonObject | null> {
-  if (noCache || !qqInfo.findGroup(groupId)) {
+  if (noCache || !bridge.identity.findGroup(groupId)) {
     try {
       await bridge.fetchGroupList();
     } catch {
       // Use cached data.
     }
   }
-  const g = qqInfo.findGroup(groupId);
+  const g = bridge.identity.findGroup(groupId);
   if (!g) return null;
   return {
     group_id: g.groupId as any,
@@ -81,34 +79,32 @@ export async function getGroupInfo(
 
 export async function getGroupMemberList(
   bridge: Bridge,
-  qqInfo: QQInfo,
   groupId: number,
   noCache?: boolean,
 ): Promise<JsonObject[]> {
   if (noCache) {
     await refreshSingleGroupMembers(bridge, groupId);
-    return getCachedGroupMembers(qqInfo, groupId);
+    return getCachedGroupMembers(bridge.identity, groupId);
   }
 
   try {
     const members = await bridge.fetchGroupMemberList(groupId);
     return members.map(m => formatGroupMember(groupId, m));
   } catch {
-    return getCachedGroupMembers(qqInfo, groupId);
+    return getCachedGroupMembers(bridge.identity, groupId);
   }
 }
 
 export async function getGroupMemberInfo(
   bridge: Bridge,
-  qqInfo: QQInfo,
   groupId: number,
   userId: number,
   noCache?: boolean,
 ): Promise<JsonObject | null> {
-  if (noCache || !qqInfo.findGroupMember(groupId, userId)) {
+  if (noCache || !bridge.identity.findGroupMember(groupId, userId)) {
     await refreshSingleGroupMembers(bridge, groupId);
   }
-  const m = qqInfo.findGroupMember(groupId, userId);
+  const m = bridge.identity.findGroupMember(groupId, userId);
   if (!m) return null;
   return formatGroupMember(groupId, m);
 }
@@ -147,7 +143,6 @@ export async function getGroupFiles(
 
 export async function getStrangerInfo(
   bridge: Bridge,
-  qqInfo: QQInfo,
   userId: number,
 ): Promise<JsonObject | null> {
   try {
@@ -159,7 +154,7 @@ export async function getStrangerInfo(
       age: p.age as any,
     };
   } catch {
-    const p = qqInfo.findUserProfile(userId);
+    const p = bridge.identity.findUserProfile(userId);
     if (!p) return null;
     return {
       user_id: p.uin as any,
@@ -201,8 +196,8 @@ export async function getDownloadRKeys(bridge: Bridge): Promise<JsonObject[]> {
   }
 }
 
-function getCachedGroupMembers(qqInfo: QQInfo, groupId: number): JsonObject[] {
-  const g = qqInfo.findGroup(groupId);
+function getCachedGroupMembers(identity: IdentityService, groupId: number): JsonObject[] {
+  const g = identity.findGroup(groupId);
   if (!g) return [];
   const result: JsonObject[] = [];
   for (const [, member] of g.members) {

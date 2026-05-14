@@ -66,9 +66,9 @@ export async function getCookies(bridge: Bridge, domain: string) {
   // Build the ptlogin2 jump URL: this is the canonical way for the
   // bot to swap its clientKey for cookie-jar entries on a given
   // qq.com subdomain.
-  const requestUrl = 'https://ssl.ptlogin2.qq.com/jump?ptlang=1033&clientuin=' + bridge.qqInfo.uin +
+  const requestUrl = 'https://ssl.ptlogin2.qq.com/jump?ptlang=1033&clientuin=' + bridge.identity.uin +
       '&clientkey=' + ClientKeyData.clientKey +
-      '&u1=https%3A%2F%2F' + domain + '%2F' + bridge.qqInfo.uin + '%2Finfocenter&keyindex=' + ClientKeyData.keyIndex;
+      '&u1=https%3A%2F%2F' + domain + '%2F' + bridge.identity.uin + '%2Finfocenter&keyindex=' + ClientKeyData.keyIndex;
 
   const data = await RequestUtil.HttpsGetCookies(requestUrl);
 
@@ -99,7 +99,7 @@ export async function getSKey(bridge: Bridge): Promise<string> {
 
   const u1 = encodeURIComponent('https://h5.qzone.qq.com/qqnt/qzoneinpcqq/friend?refresh=0&clientuin=0&darkMode=0');
   const requestUrl = 'https://ssl.ptlogin2.qq.com/jump?ptlang=1033' +
-      '&clientuin=' + bridge.qqInfo.uin +
+      '&clientuin=' + bridge.identity.uin +
       '&clientkey=' + ClientKeyData.clientKey +
       '&u1=' + u1 +
       '&keyindex=' + ClientKeyData.keyIndex;

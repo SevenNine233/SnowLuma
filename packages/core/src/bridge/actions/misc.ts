@@ -155,7 +155,7 @@ export async function sendGroupSign(
 ) {
   const req = {
     signInInfo: {
-      uin: String(bridge.qqInfo.uin),
+      uin: String(bridge.identity.uin),
       groupId: String(groupId),
       version: '9.0.90',
     },
