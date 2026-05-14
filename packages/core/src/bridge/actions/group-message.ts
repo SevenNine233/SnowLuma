@@ -5,7 +5,7 @@
 
 import type { Bridge } from '../bridge';
 import { protoEncode } from '../../protobuf/decode';
-import { sendOidbAndCheck } from '../bridge-oidb';
+import { runOidb } from '../bridge-oidb';
 import {
   C2CRecallRequestSchema,
   GroupRecallRequestSchema,
@@ -96,6 +96,9 @@ export async function markGroupMessageRead(
 export async function setGroupEssence(bridge: Bridge, groupId: number, sequence: number, random: number, enable: boolean): Promise<void> {
   const subCmd = enable ? 1 : 2;
   const cmd = enable ? 'OidbSvcTrpcTcp.0xeac_1' : 'OidbSvcTrpcTcp.0xeac_2';
-  await sendOidbAndCheck(bridge, cmd, 0xEAC, subCmd,
-    { groupUin: groupId, sequence, random }, OidbEssenceSchema);
+  await runOidb(bridge, {
+    cmd,
+    oidbCmd: 0xEAC, subCmd,
+    request: { schema: OidbEssenceSchema, value: { groupUin: groupId, sequence, random } },
+  });
 }

@@ -4,7 +4,7 @@
 
 import type { Bridge } from '../bridge';
 import { protoDecode, protoEncode } from '../../protobuf/decode';
-import { sendOidbAndCheck, sendOidbAndDecode } from '../bridge-oidb';
+import { runOidb } from '../bridge-oidb';
 import { fetchHighwaySession, uploadHighwayHttp } from '../highway/highway-client';
 import { computeHashes, loadBinarySource } from '../highway/utils';
 import {
@@ -81,14 +81,11 @@ export async function setProfile(
     stringProfiles,
   };
 
-  await sendOidbAndCheck(
-    bridge,
-    'OidbSvcTrpcTcp.0x112a_2',
-    0x112A,
-    2,
-    req,
-    OidbSetProfileSchema,
-  );
+  await runOidb(bridge, {
+    cmd: 'OidbSvcTrpcTcp.0x112a_2',
+    oidbCmd: 0x112A, subCmd: 2,
+    request: { schema: OidbSetProfileSchema, value: req },
+  });
 }
 
 export async function setSelfLongNick(
@@ -103,15 +100,12 @@ export async function setSelfLongNick(
     },
   };
 
-  await sendOidbAndDecode<any>(
-    bridge,
-    'OidbSvcTrpcTcp.0x112a_2',
-    0x112A,
-    2,
-    req,
-    Oidb0x112aReqSchema,
-    Oidb0x112aRespSchema,
-  );
+  await runOidb<any>(bridge, {
+    cmd: 'OidbSvcTrpcTcp.0x112a_2',
+    oidbCmd: 0x112A, subCmd: 2,
+    request: { schema: Oidb0x112aReqSchema, value: req },
+    response: { schema: Oidb0x112aRespSchema },
+  });
 }
 
 export async function setInputStatus(
@@ -133,15 +127,12 @@ export async function setInputStatus(
     },
   };
 
-  await sendOidbAndDecode<any>(
-    bridge,
-    'OidbSvcTrpcTcp.0xcd4_1',
-    0xCD4,
-    1,
-    req,
-    Oidb0xcd4ReqSchema,
-    Oidb0xcd4RespSchema,
-  );
+  await runOidb<any>(bridge, {
+    cmd: 'OidbSvcTrpcTcp.0xcd4_1',
+    oidbCmd: 0xCD4, subCmd: 1,
+    request: { schema: Oidb0xcd4ReqSchema, value: req },
+    response: { schema: Oidb0xcd4RespSchema },
+  });
 }
 
 export async function setAvatar(
@@ -182,15 +173,12 @@ export async function getProfileLike(
     limit: limit,
   };
 
-  const result = await sendOidbAndDecode<any>(
-    bridge,
-    'OidbSvcTrpcTcp.0x7ed_12',
-    0x7ED,
-    12,
-    req,
-    Oidb0x7edReqSchema,
-    Oidb0x7edRespSchema,
-  );
+  const result = await runOidb<any>(bridge, {
+    cmd: 'OidbSvcTrpcTcp.0x7ed_12',
+    oidbCmd: 0x7ED, subCmd: 12,
+    request: { schema: Oidb0x7edReqSchema, value: req },
+    response: { schema: Oidb0x7edRespSchema },
+  });
 
   const data = result?.userLikeInfos?.[0];
   if (!data) {
@@ -230,15 +218,12 @@ export async function getUnidirectionalFriendList(
     jsonBody: JSON.stringify(reqObj),
   };
 
-  const result = await sendOidbAndDecode<any>(
-    bridge,
-    'MQUpdateSvc_com_qq_ti.web.OidbSvc.0xe17_0',
-    0xE17,
-    0,
-    req,
-    Oidb0xe17ReqSchema,
-    Oidb0xe17RespSchema,
-  );
+  const result = await runOidb<any>(bridge, {
+    cmd: 'MQUpdateSvc_com_qq_ti.web.OidbSvc.0xe17_0',
+    oidbCmd: 0xE17, subCmd: 0,
+    request: { schema: Oidb0xe17ReqSchema, value: req },
+    response: { schema: Oidb0xe17RespSchema },
+  });
 
   if (!result || !result.jsonBody) {
     throw new Error('get unidirectional friend list empty');

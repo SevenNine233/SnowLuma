@@ -4,7 +4,7 @@
 // thread the cookies into a qun.qq.com REST endpoint.
 
 import type { Bridge } from '../bridge';
-import { sendOidbAndDecode } from '../bridge-oidb';
+import { runOidb } from '../bridge-oidb';
 import {
   OidbClientKeyRespSchema,
   OidbClientKeyReqSchema,
@@ -14,15 +14,12 @@ import {
 import { RequestUtil } from '../web/request-util';
 
 export async function forceFetchClientKey(bridge: Bridge) {
-  const resp = await sendOidbAndDecode<any>(
-    bridge,
-    'OidbSvcTrpcTcp.0x102a_1',
-    0x102A,
-    1,
-    {},
-    OidbClientKeyReqSchema,
-    OidbClientKeyRespSchema,
-  );
+  const resp = await runOidb<any>(bridge, {
+    cmd: 'OidbSvcTrpcTcp.0x102a_1',
+    oidbCmd: 0x102A, subCmd: 1,
+    request: { schema: OidbClientKeyReqSchema, value: {} },
+    response: { schema: OidbClientKeyRespSchema },
+  });
 
   const clientKey = resp?.clientKey || '';
   // keyIndex falls back to "19" — origin unknown but the value is what
@@ -37,15 +34,12 @@ export async function forceFetchClientKey(bridge: Bridge) {
 }
 
 export async function getPSkey(bridge: Bridge, domainList: string[]) {
-  const resp = await sendOidbAndDecode<any>(
-    bridge,
-    'OidbSvcTrpcTcp.0x102a_0',
-    0x102A,
-    0,
-    { domainList },
-    OidbGetPskeyReqSchema,
-    OidbGetPskeyRespSchema,
-  );
+  const resp = await runOidb<any>(bridge, {
+    cmd: 'OidbSvcTrpcTcp.0x102a_0',
+    oidbCmd: 0x102A, subCmd: 0,
+    request: { schema: OidbGetPskeyReqSchema, value: { domainList } },
+    response: { schema: OidbGetPskeyRespSchema },
+  });
 
   const domainPskeyMap = new Map<string, string>();
 
