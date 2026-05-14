@@ -1,5 +1,5 @@
 import path from 'path';
-import type { Bridge } from '../bridge/bridge';
+import type { BridgeInterface } from '../bridge/bridge-interface';
 import { ApiHandler } from './api-handler';
 import type { ConverterContext } from './event-converter';
 import { MediaIndexer } from './media-indexer';
@@ -26,7 +26,7 @@ const log = createLogger('Event');
 export class OneBotInstance {
   readonly uin: string;
 
-  private readonly bridge: Bridge;
+  private readonly bridge: BridgeInterface;
   private readonly apiHandler: ApiHandler;
   private readonly converterCtx: ConverterContext;
   private readonly messageStore: MessageStore;
@@ -43,7 +43,7 @@ export class OneBotInstance {
 
   get nickname(): string { return this.bridge.identity.nickname; }
 
-  constructor(uin: string, bridge: Bridge, config: OneBotConfig) {
+  constructor(uin: string, bridge: BridgeInterface, config: OneBotConfig) {
     this.uin = uin;
     this.bridge = bridge;
 

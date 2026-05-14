@@ -10,6 +10,7 @@ import type { PacketSender, SendPacketResult } from '../protocol/packet-sender';
 import { protoEncode, protoDecode } from '../protobuf/decode';
 import { buildSendElems } from './element-builder';
 import { IdentityService } from './identity-service';
+import type { BridgeInterface } from './bridge-interface';
 import { createLogger } from '../utils/logger';
 import {
   SendMessageRequestSchema,
@@ -142,7 +143,7 @@ type GroupMemberIdentityEvent = Extract<QQEventVariant, { kind: 'group_member_jo
 const log = createLogger('Bridge');
 const eventLog = createLogger('Event');
 
-export class Bridge {
+export class Bridge implements BridgeInterface {
   private static readonly SEND_MSG_CMD = 'MessageSvc.PbSendMsg';
 
   readonly identity: IdentityService;

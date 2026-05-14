@@ -1,4 +1,4 @@
-import type { Bridge } from '../bridge/bridge';
+import type { BridgeInterface } from '../bridge/bridge-interface';
 import type { BridgeManager } from '../bridge/manager';
 import { loadOneBotConfig } from './config';
 import { OneBotInstance } from './instance';
@@ -48,7 +48,7 @@ export class OneBotManager {
     this.instances.clear();
   }
 
-  private onSessionStarted(uin: string, bridge: Bridge): void {
+  private onSessionStarted(uin: string, bridge: BridgeInterface): void {
     if (this.instances.has(uin)) return;
 
     const config = loadOneBotConfig(uin);
@@ -83,7 +83,7 @@ export class OneBotManager {
 
 }
 
-async function warmUpBridgeState(uin: string, bridge: Bridge): Promise<void> {
+async function warmUpBridgeState(uin: string, bridge: BridgeInterface): Promise<void> {
   const selfUin = parseInt(uin, 10) || 0;
   let selfResolved = false;
 

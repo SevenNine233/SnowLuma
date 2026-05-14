@@ -1,5 +1,5 @@
 import type { WebHonorType } from '@/bridge/web/group-honor';
-import type { Bridge } from '../bridge/bridge';
+import type { BridgeInterface } from '../bridge/bridge-interface';
 import type { ApiActionContext } from './api-handler';
 import type { ConverterContext } from './event-converter';
 import type { MediaStore } from './media-store';
@@ -55,7 +55,7 @@ export interface OneBotInstanceContext {
   /** Self UIN parsed once, used in event payloads. */
   selfId: number;
 
-  bridge: Bridge;
+  bridge: BridgeInterface;
 
   messageStore: MessageStore;
   mediaStore: MediaStore;

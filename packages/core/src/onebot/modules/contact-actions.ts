@@ -1,4 +1,4 @@
-import type { Bridge } from '../../bridge/bridge';
+import type { BridgeInterface } from '../../bridge/bridge-interface';
 import type { IdentityService } from '../../bridge/identity-service';
 import type { OneBotInstanceContext } from '../instance-context';
 import type { JsonObject } from '../types';
@@ -11,7 +11,7 @@ export function getLoginInfo(ref: OneBotInstanceContext): { userId: number; nick
 
 // Keep refreshes scoped. A broad "refresh all members in all groups" call can
 // turn one OneBot request into N OIDB calls, which is risky for busy clients.
-async function refreshSingleGroupMembers(bridge: Bridge, groupId: number): Promise<void> {
+async function refreshSingleGroupMembers(bridge: BridgeInterface, groupId: number): Promise<void> {
   try {
     await bridge.fetchGroupMemberList(groupId);
   } catch {
@@ -19,7 +19,7 @@ async function refreshSingleGroupMembers(bridge: Bridge, groupId: number): Promi
   }
 }
 
-export async function getFriendList(bridge: Bridge): Promise<JsonObject[]> {
+export async function getFriendList(bridge: BridgeInterface): Promise<JsonObject[]> {
   try {
     const friends = await bridge.fetchFriendList();
     return friends.map(f => ({
@@ -37,7 +37,7 @@ export async function getFriendList(bridge: Bridge): Promise<JsonObject[]> {
 }
 
 export async function getGroupList(
-  bridge: Bridge,
+  bridge: BridgeInterface,
   noCache?: boolean,
 ): Promise<JsonObject[]> {
   try {
@@ -56,7 +56,7 @@ export async function getGroupList(
 }
 
 export async function getGroupInfo(
-  bridge: Bridge,
+  bridge: BridgeInterface,
   groupId: number,
   noCache?: boolean,
 ): Promise<JsonObject | null> {
@@ -78,7 +78,7 @@ export async function getGroupInfo(
 }
 
 export async function getGroupMemberList(
-  bridge: Bridge,
+  bridge: BridgeInterface,
   groupId: number,
   noCache?: boolean,
 ): Promise<JsonObject[]> {
@@ -96,7 +96,7 @@ export async function getGroupMemberList(
 }
 
 export async function getGroupMemberInfo(
-  bridge: Bridge,
+  bridge: BridgeInterface,
   groupId: number,
   userId: number,
   noCache?: boolean,
@@ -110,7 +110,7 @@ export async function getGroupMemberInfo(
 }
 
 export async function getGroupFiles(
-  bridge: Bridge,
+  bridge: BridgeInterface,
   groupId: number,
   folderId?: string,
 ): Promise<JsonObject> {
@@ -142,7 +142,7 @@ export async function getGroupFiles(
 }
 
 export async function getStrangerInfo(
-  bridge: Bridge,
+  bridge: BridgeInterface,
   userId: number,
 ): Promise<JsonObject | null> {
   try {
@@ -165,7 +165,7 @@ export async function getStrangerInfo(
   }
 }
 
-export async function getGroupSystemMessages(bridge: Bridge): Promise<JsonObject[]> {
+export async function getGroupSystemMessages(bridge: BridgeInterface): Promise<JsonObject[]> {
   try {
     const reqs = await bridge.fetchGroupRequests();
     return reqs.map(r => ({
@@ -182,7 +182,7 @@ export async function getGroupSystemMessages(bridge: Bridge): Promise<JsonObject
   }
 }
 
-export async function getDownloadRKeys(bridge: Bridge): Promise<JsonObject[]> {
+export async function getDownloadRKeys(bridge: BridgeInterface): Promise<JsonObject[]> {
   try {
     const rkeys = await bridge.fetchDownloadRKeys();
     return rkeys.map(r => ({
