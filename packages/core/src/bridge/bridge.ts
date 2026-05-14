@@ -11,6 +11,7 @@ import { protoEncode, protoDecode } from '../protobuf/decode';
 import { buildSendElems } from './element-builder';
 import { IdentityService } from './identity-service';
 import type { BridgeInterface } from './bridge-interface';
+import { IncomingPacketPipeline, type CmdParser } from './packet-pipeline';
 import { createLogger } from '../utils/logger';
 import {
   SendMessageRequestSchema,
@@ -114,8 +115,6 @@ import type { GroupFilesResult } from './actions/group-file';
 import type { MediaIndexNode } from './actions/shared';
 import { BridgeEventBus } from './event-bus';
 
-type CmdParser = (pkt: PacketInfo, identity: IdentityService) => QQEventVariant[];
-
 export interface SendMessageReceipt {
   messageId: number;
   sequence: number;
@@ -138,10 +137,7 @@ export interface ClientKeyInfo {
   keyIndex: string
 }
 
-type GroupMemberIdentityEvent = Extract<QQEventVariant, { kind: 'group_member_join' | 'group_member_leave' }>;
-
 const log = createLogger('Bridge');
-const eventLog = createLogger('Event');
 
 export class Bridge implements BridgeInterface {
   private static readonly SEND_MSG_CMD = 'MessageSvc.PbSendMsg';
@@ -151,12 +147,11 @@ export class Bridge implements BridgeInterface {
   /**
    * Per-kind event subscription. Replaces the legacy single-callback
    * firehose: downstream consumers now register exactly the kinds they
-   * care about and `emitEvent` fans out in parallel.
+   * care about and the pipeline fans out in parallel.
    */
   readonly events = new BridgeEventBus();
-  private cmdHandlers_ = new Map<string, CmdParser[]>();
+  private readonly pipeline: IncomingPacketPipeline;
   private packetClient_: PacketSender | null = null;
-  private memberRefreshTasks_ = new Map<number, Promise<void>>();
   // Throttle for fetchGroupMemberList(groupId): coalesces in-flight calls
   // and serves a fresh result for `kMemberListTtlMs` to all callers.
   // Without this, a busy OneBot client (e.g. MaiBot calling
@@ -177,7 +172,13 @@ export class Bridge implements BridgeInterface {
       fetchProfile: (uin) => this.fetchUserProfile(uin),
       fetchGroupMemberList: (gid) => this.fetchGroupMemberList(gid),
     });
-    this.registerDefaultHandlers();
+    this.pipeline = new IncomingPacketPipeline({
+      identity: this.identity,
+      events: this.events,
+      refreshMemberCache: (groupId, refreshGroupList, forceMemberList) =>
+        this.refreshMemberCache(groupId, refreshGroupList, forceMemberList),
+    });
+    this.pipeline.registerCmd(MSG_PUSH_CMD, parseMsgPush);
   }
 
   dispose(): void {
@@ -189,18 +190,12 @@ export class Bridge implements BridgeInterface {
     this.packetClient_ = client;
   }
 
-  private registerDefaultHandlers(): void {
-    this.registerCmd(MSG_PUSH_CMD, parseMsgPush);
-  }
-
   registerCmd(cmd: string, parser: CmdParser): void {
-    const arr = this.cmdHandlers_.get(cmd) ?? [];
-    arr.push(parser);
-    this.cmdHandlers_.set(cmd, arr);
+    this.pipeline.registerCmd(cmd, parser);
   }
 
   handlesCmd(cmd: string): boolean {
-    return this.cmdHandlers_.has(cmd);
+    return this.pipeline.handlesCmd(cmd);
   }
 
   // --- PID management ---
@@ -221,176 +216,7 @@ export class Bridge implements BridgeInterface {
   // --- Packet dispatch ---
 
   onPacket(pkt: PacketInfo): void {
-    const handlers = this.cmdHandlers_.get(pkt.serviceCmd);
-    if (!handlers) return;
-
-    for (const handler of handlers) {
-      try {
-        const events = handler(pkt, this.identity);
-        for (const event of events) {
-          if (this.needsPreDispatchIdentityRefresh(event)) {
-            void this.dispatchAfterIdentityRefresh(event);
-          } else {
-            this.triggerMemberCacheRefresh(event);
-            printEvent(event);
-            this.emitEvent(event);
-          }
-        }
-      } catch (e) {
-        log.error('handler error for %s: %s', pkt.serviceCmd, e instanceof Error ? (e.stack ?? e.message) : String(e));
-      }
-    }
-  }
-
-  private needsPreDispatchIdentityRefresh(event: QQEventVariant): event is Extract<QQEventVariant, { kind: 'group_member_join' }> {
-    return event.kind === 'group_member_join' && event.groupId > 0 && event.userUin <= 0 && Boolean(event.userUid);
-  }
-
-  private async dispatchAfterIdentityRefresh(event: Extract<QQEventVariant, { kind: 'group_member_join' }>): Promise<void> {
-    let refreshed = false;
-    try {
-      refreshed = await this.prepareGroupMemberJoinIdentity(event);
-    } catch (e) {
-      log.warn('failed to resolve group member join identity: group=%d uid=%s err=%s',
-        event.groupId, event.userUid ?? '', e instanceof Error ? e.message : String(e));
-    }
-
-    this.triggerMemberCacheRefresh(event, refreshed);
-    printEvent(event);
-    this.emitEvent(event);
-  }
-
-  private emitEvent(event: QQEventVariant): void {
-    // Fire-and-forget: errors inside subscribers are surfaced via the bus's
-    // own onError hook so one bad listener never blocks the others.
-    void this.events.emit(event);
-  }
-
-  private async prepareGroupMemberJoinIdentity(event: Extract<QQEventVariant, { kind: 'group_member_join' }>): Promise<boolean> {
-    this.resolveMemberIdentityFromCache(event);
-    if (event.userUin > 0 || !event.userUid || event.groupId <= 0) return false;
-
-    const refreshed = await this.refreshMemberCache(
-      event.groupId,
-      !this.identity.findGroup(event.groupId) || this.isSelfMemberIdentity(event.userUin, event.userUid),
-      true,
-    );
-    this.resolveMemberIdentityFromCache(event);
-    return refreshed;
-  }
-
-  private resolveMemberIdentityFromCache(event: GroupMemberIdentityEvent): void {
-    if (event.groupId <= 0) return;
-    if (event.userUin <= 0 && event.userUid) {
-      const uin = this.resolveUidFromCache(event.groupId, event.userUid);
-      if (uin !== null) event.userUin = uin;
-    }
-    if (event.operatorUin <= 0 && event.operatorUid) {
-      const uin = this.resolveUidFromCache(event.groupId, event.operatorUid);
-      if (uin !== null) event.operatorUin = uin;
-    }
-  }
-
-  private resolveUidFromCache(groupId: number, uid: string): number | null {
-    return this.identity.findUinByUid(uid, groupId);
-  }
-
-  private isSelfMemberIdentity(uin: number, uid?: string): boolean {
-    const selfUin = Number(this.identity.uin);
-    return (uin > 0 && uin === selfUin) || (Boolean(uid) && uid === this.identity.selfUid);
-  }
-
-  private triggerMemberCacheRefresh(event: QQEventVariant, alreadyRefreshed = false): void {
-    this.rememberEventIdentity(event);
-    if (alreadyRefreshed) return;
-
-    let groupId = 0;
-    let reason = '';
-    let refreshGroupList = false;
-    switch (event.kind) {
-      case 'group_member_join':
-        groupId = event.groupId;
-        reason = 'group_member_join';
-        refreshGroupList = this.isSelfMemberIdentity(event.userUin, event.userUid);
-        break;
-      case 'group_member_leave':
-        groupId = event.groupId;
-        reason = 'group_member_leave';
-        break;
-      case 'group_admin':
-        groupId = event.groupId;
-        reason = 'group_admin';
-        break;
-      default:
-        return;
-    }
-
-    if (groupId <= 0) return;
-    if (this.memberRefreshTasks_.has(groupId)) return;
-    if (event.kind === 'group_member_join' && !this.identity.findGroup(groupId)) {
-      refreshGroupList = true;
-    }
-
-    const task = (async () => {
-      try {
-        await this.refreshMemberCache(groupId, refreshGroupList, false);
-        log.debug('member cache refreshed: group=%d reason=%s', groupId, reason);
-      } catch (e) {
-        log.warn('failed to refresh member cache: group=%d reason=%s err=%s',
-          groupId, reason, e instanceof Error ? e.message : String(e));
-      } finally {
-        this.memberRefreshTasks_.delete(groupId);
-      }
-    })();
-
-    this.memberRefreshTasks_.set(groupId, task);
-  }
-
-  private rememberEventIdentity(event: QQEventVariant): void {
-    switch (event.kind) {
-      case 'group_member_join':
-        this.identity.rememberGroupMemberIdentity(event.groupId, {
-          uid: event.userUid,
-          uin: event.userUin,
-        });
-        this.identity.rememberGroupMemberIdentity(event.groupId, {
-          uid: event.operatorUid,
-          uin: event.operatorUin,
-        });
-        break;
-      case 'group_member_leave':
-        this.identity.markGroupMemberInactive(event.groupId, {
-          uid: event.userUid,
-          uin: event.userUin,
-        });
-        this.identity.rememberGroupMemberIdentity(event.groupId, {
-          uid: event.operatorUid,
-          uin: event.operatorUin,
-        });
-        break;
-      case 'group_admin':
-        this.identity.rememberGroupMemberIdentity(event.groupId, {
-          uin: event.userUin,
-        });
-        break;
-      case 'friend_request':
-        this.identity.rememberRequestIdentity({
-          uid: event.fromUid,
-          uin: event.fromUin,
-          source: 'friend_request',
-        });
-        break;
-      case 'group_invite':
-        this.identity.rememberRequestIdentity({
-          groupId: event.groupId,
-          uid: event.fromUid,
-          uin: event.fromUin,
-          source: 'group_request',
-        });
-        break;
-      default:
-        break;
-    }
+    this.pipeline.process(pkt);
   }
 
   private async refreshMemberCache(groupId: number, refreshGroupList: boolean, forceMemberList: boolean): Promise<boolean> {
@@ -704,74 +530,3 @@ export class Bridge implements BridgeInterface {
   }
 }
 
-// --- Module-level helper functions ---
-
-function elementsToText(elements: MessageElement[]): string {
-  return elements.map(e => {
-    switch (e.type) {
-      case 'text': return e.text ?? '';
-      case 'at': return `@${e.targetUin ?? 'all'}`;
-      case 'face': return `[表情:${e.faceId}]`;
-      case 'mface': return `[${e.summary ?? '表情'}]`;
-      case 'image': return '[图片]';
-      case 'video': return '[视频]';
-      case 'record': return '[语音]';
-      case 'file': return `[文件:${e.fileName ?? ''}]`;
-      case 'json': return '[JSON卡片]';
-      case 'xml': return '[XML卡片]';
-      case 'reply': return `[回复:${e.replySeq}]`;
-      case 'poke': return '[戳一戳]';
-      case 'forward': return '[合并转发]';
-      case 'markdown': return '[Markdown]';
-      default: return `[${e.type}]`;
-    }
-  }).join('');
-}
-
-function formatEventUser(uin: number, uid?: string): string {
-  if (uin > 0) return String(uin);
-  return uid || '未知用户';
-}
-
-function printEvent(event: QQEventVariant): void {
-  switch (event.kind) {
-    case 'group_message':
-    case 'friend_message':
-    case 'temp_message':
-      // Message logging is handled by OneBot layer with message ID
-      break;
-    case 'group_recall':
-      eventLog.warn('群撤回 %d | %d 被 %d 撤回', event.groupId, event.authorUin, event.operatorUin);
-      break;
-    case 'friend_recall':
-      eventLog.warn('私聊撤回 %d 撤回了消息', event.userUin);
-      break;
-    case 'group_member_join':
-      eventLog.info('入群 %s 加入 %d', formatEventUser(event.userUin, event.userUid), event.groupId);
-      break;
-    case 'group_member_leave':
-      eventLog.warn('退群 %s %s %d', formatEventUser(event.userUin, event.userUid), event.isKick ? '被踢出' : '退出', event.groupId);
-      break;
-    case 'group_mute':
-      eventLog.warn('禁言 %d | %d %d秒', event.groupId, event.userUin, event.duration);
-      break;
-    case 'group_admin':
-      eventLog.info('管理 %d | %d %s管理员', event.groupId, event.userUin, event.set ? '+' : '-');
-      break;
-    case 'friend_poke':
-      eventLog.info('戳一戳 %d -> %d', event.userUin, event.targetUin);
-      break;
-    case 'group_poke':
-      eventLog.info('群戳 %d | %d -> %d', event.groupId, event.userUin, event.targetUin);
-      break;
-    case 'friend_request':
-      eventLog.warn('好友请求 %d: %s', event.fromUin, event.message);
-      break;
-    case 'group_invite':
-      eventLog.warn('群邀请 %d -> 群%d', event.fromUin, event.groupId);
-      break;
-    case 'group_essence':
-      eventLog.info('精华 %d | %s精华', event.groupId, event.set ? '+' : '-');
-      break;
-  }
-}
