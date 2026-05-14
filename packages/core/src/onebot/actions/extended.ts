@@ -1,6 +1,33 @@
 import type { ApiHandler, ApiActionContext } from '../api-handler';
 import { asMessage, asNumber, asString, asBoolean } from '../api-handler';
+import type { ForwardPreviewMeta } from '../modules/message-actions';
 import { RETCODE, failedResponse, okResponse } from '../types';
+
+/**
+ * Pull NapCat-compatible forward preview overrides off a send_*_forward_msg
+ * payload. All four fields are optional — when omitted, the module layer
+ * derives sensible defaults from the actual node list.
+ */
+function readForwardPreviewMeta(params: Record<string, unknown>): ForwardPreviewMeta | undefined {
+  const source = asString(params.source) || undefined;
+  const summary = asString(params.summary) || undefined;
+  const prompt = asString(params.prompt) || undefined;
+  let news: Array<{ text: string }> | undefined;
+  if (Array.isArray(params.news)) {
+    const collected: Array<{ text: string }> = [];
+    for (const item of params.news) {
+      if (typeof item === 'string') {
+        collected.push({ text: item });
+      } else if (item && typeof item === 'object' && !Array.isArray(item)) {
+        const text = asString((item as Record<string, unknown>).text);
+        if (text) collected.push({ text });
+      }
+    }
+    if (collected.length > 0) news = collected;
+  }
+  if (!source && !summary && !prompt && !news) return undefined;
+  return { source, summary, prompt, news };
+}
 
 export function register(h: ApiHandler, ctx: ApiActionContext): void {
   // --- Likes & Pokes ---
@@ -301,18 +328,19 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     const groupId = asNumber(params.group_id);
     const userId = asNumber(params.user_id);
     const messages = asMessage(params.messages ?? params.message);
+    const meta = readForwardPreviewMeta(params);
 
     if (messages === undefined) return failedResponse(RETCODE.BAD_REQUEST, 'message/messages is required');
 
     if ((messageType === 'group' || groupId > 0) && ctx.sendGroupForwardMsg) {
       if (!groupId) return failedResponse(RETCODE.BAD_REQUEST, 'group_id is required');
-      const result = await ctx.sendGroupForwardMsg(groupId, messages);
+      const result = await ctx.sendGroupForwardMsg(groupId, messages, meta);
       return okResponse({ message_id: result.messageId, res_id: result.forwardId, forward_id: result.forwardId });
     }
 
     if ((messageType === 'private' || userId > 0) && ctx.sendPrivateForwardMsg) {
       if (!userId) return failedResponse(RETCODE.BAD_REQUEST, 'user_id is required');
-      const result = await ctx.sendPrivateForwardMsg(userId, messages);
+      const result = await ctx.sendPrivateForwardMsg(userId, messages, meta);
       return okResponse({ message_id: result.messageId, res_id: result.forwardId, forward_id: result.forwardId });
     }
 
@@ -326,7 +354,7 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     if (!groupId) return failedResponse(RETCODE.BAD_REQUEST, 'group_id is required');
     if (messages === undefined) return failedResponse(RETCODE.BAD_REQUEST, 'message/messages is required');
 
-    const result = await ctx.sendGroupForwardMsg(groupId, messages);
+    const result = await ctx.sendGroupForwardMsg(groupId, messages, readForwardPreviewMeta(params));
     return okResponse({ message_id: result.messageId, res_id: result.forwardId, forward_id: result.forwardId });
   });
 
@@ -336,7 +364,7 @@ export function register(h: ApiHandler, ctx: ApiActionContext): void {
     if (!userId) return failedResponse(RETCODE.BAD_REQUEST, 'user_id is required');
     if (messages === undefined) return failedResponse(RETCODE.BAD_REQUEST, 'message/messages is required');
 
-    const result = await ctx.sendPrivateForwardMsg(userId, messages);
+    const result = await ctx.sendPrivateForwardMsg(userId, messages, readForwardPreviewMeta(params));
     return okResponse({ message_id: result.messageId, res_id: result.forwardId, forward_id: result.forwardId });
   });
 
