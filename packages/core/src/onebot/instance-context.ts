@@ -174,7 +174,11 @@ export function buildApiContext(ref: OneBotInstanceContext): ApiActionContext {
     getGroupFileCount: (groupId) => bridge.fetchGroupFileCount(groupId),
     setMsgEmojiLike: async (messageId, emojiId, set) => {
       const meta = messageStore.findMeta(messageId);
-      if (!meta || !meta.isGroup) throw new Error('message not found or not a group message');
+      if (!meta) throw new Error('message not found');
+      // QQ itself doesn't expose emoji reactions on private chats, so
+      // there is no wire path to forward this to; fail loudly instead
+      // of silently no-op'ing.
+      if (!meta.isGroup) throw new Error('emoji reactions are not supported on private messages');
       await bridge.setGroupReaction(meta.targetId, meta.sequence, emojiId, set);
     },
     markGroupMsgAsRead: (groupId, sequence) => bridge.markGroupMsgAsRead(groupId, sequence),
